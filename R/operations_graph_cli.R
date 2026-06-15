@@ -18,47 +18,21 @@ parse_graph_outputs <- function(raw) {
   outputs
 }
 
-#' Run the operations-graph generator
+#' Run the operations-graph generator from explicit paths
 #'
-#' @param procedure Character procedure name
-#' @param path_to_sas_entrypoint Character path to the SAS entrypoint
-#' @param group Character outputs group name
-#' @param outputs Character vector of target output dataset names
+#' @param sas_dir Character path to the SAS source directory
+#' @param entrypoint Character path to the SAS entrypoint file (absolute or relative)
+#' @param output_dir Character path to the output directory
+#' @param manifest_paths Character vector of paths to lineage manifest JSON files
 #' @param format Character output format: "dot", "txt", or "llm"
 #' @param verbose Logical enable verbose debug output
-#' @param project_root Character path to the migration-factory root
 #' @return Integer 0 on success, 1 on error
 #' @export
-run_operations_graph <- function(procedure, path_to_sas_entrypoint,
-                                  group, outputs,
-                                  format = "dot", verbose = FALSE,
-                                  project_root = NULL) {
-  if (is.null(project_root)) {
-    project_root <- tryCatch({
-      pkg_dir <- system.file(package = "saslineager")
-      if (nzchar(pkg_dir)) dirname(dirname(pkg_dir)) else getwd()
-    }, error = function(e) getwd())
-  }
-
-  procedure_root <- file.path(project_root, "procedures",
-                               paste0("migration-", procedure))
-  sas_dir <- file.path(procedure_root, "sas")
-
-  output_dir <- file.path(procedure_root, "migration-data", group, "lineage")
-
-  # Resolve manifest paths
-  manifest_paths <- character(0)
-  for (output in outputs) {
-    mp <- file.path(output_dir, output, "lineage-manifest.json")
-    if (!file.exists(mp)) {
-      cat(sprintf("Error: Manifest file not found: %s\n", mp))
-      return(1L)
-    }
-    manifest_paths <- c(manifest_paths, mp)
-  }
-
-  # Resolve entrypoint
-  entrypoint_file <- normalizePath(path_to_sas_entrypoint, mustWork = FALSE)
+run_operations_graph_from_manifests <- function(sas_dir, entrypoint,
+                                                output_dir, manifest_paths,
+                                                format = "dot", verbose = FALSE) {
+  # Resolve entrypoint relative to sas_dir
+  entrypoint_file <- normalizePath(entrypoint, mustWork = FALSE)
   if (!file.exists(entrypoint_file)) {
     cat(sprintf("Error: Entrypoint file not found: %s\n", entrypoint_file))
     return(1L)
@@ -66,21 +40,20 @@ run_operations_graph <- function(procedure, path_to_sas_entrypoint,
 
   sas_dir_resolved <- normalizePath(sas_dir, mustWork = FALSE)
   if (!startsWith(entrypoint_file, paste0(sas_dir_resolved, "/"))) {
-    # Try with trailing separator
     if (!startsWith(entrypoint_file, sas_dir_resolved)) {
       cat(sprintf("Error: Entrypoint %s is not under %s\n",
                   entrypoint_file, sas_dir_resolved))
       return(1L)
     }
   }
-  entrypoint <- substring(entrypoint_file, nchar(sas_dir_resolved) + 2L)
+  entrypoint_rel <- substring(entrypoint_file, nchar(sas_dir_resolved) + 2L)
 
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
   # Build generator
   generator <- OperationsGraphGenerator$new(
     sas_dir = sas_dir,
-    entrypoint = entrypoint,
+    entrypoint = entrypoint_rel,
     manifest_paths = manifest_paths
   )
   generator$verbose <- verbose
@@ -106,7 +79,7 @@ run_operations_graph <- function(procedure, path_to_sas_entrypoint,
   cat(sprintf("  Macro definitions: %d (%d unique names)\n",
               total_macros, length(generator$macro_definitions)))
 
-  cat(sprintf("Walking code from: %s\n", entrypoint))
+  cat(sprintf("Walking code from: %s\n", entrypoint_rel))
   generator$walk_code()
   cat(sprintf("  Operations found: %d\n", length(generator$graph_nodes)))
   cat(sprintf("  Edges created: %d\n", length(generator$graph_edges)))
@@ -120,7 +93,7 @@ run_operations_graph <- function(procedure, path_to_sas_entrypoint,
     cat(sprintf("\nError: target dataset(s) not found during code walk: %s\n",
                 paste(sort(missing_targets), collapse = ", ")))
     cat(sprintf("  The entrypoint '%s' does not reach the SAS file(s) that produce these outputs.\n",
-                entrypoint))
+                entrypoint_rel))
     cat("  Use the SAS file that directly creates the target dataset(s) as the entrypoint.\n")
     return(1L)
   }
@@ -176,4 +149,52 @@ run_operations_graph <- function(procedure, path_to_sas_entrypoint,
   }
 
   0L
+}
+
+#' Run the operations-graph generator (legacy interface)
+#'
+#' @param procedure Character procedure name
+#' @param path_to_sas_entrypoint Character path to the SAS entrypoint
+#' @param group Character outputs group name
+#' @param outputs Character vector of target output dataset names
+#' @param format Character output format: "dot", "txt", or "llm"
+#' @param verbose Logical enable verbose debug output
+#' @param project_root Character path to the migration-factory root
+#' @return Integer 0 on success, 1 on error
+#' @export
+run_operations_graph <- function(procedure, path_to_sas_entrypoint,
+                                  group, outputs,
+                                  format = "dot", verbose = FALSE,
+                                  project_root = NULL) {
+  if (is.null(project_root)) {
+    project_root <- tryCatch({
+      pkg_dir <- system.file(package = "saslineager")
+      if (nzchar(pkg_dir)) dirname(dirname(pkg_dir)) else getwd()
+    }, error = function(e) getwd())
+  }
+
+  procedure_root <- file.path(project_root, "procedures",
+                               paste0("migration-", procedure))
+  sas_dir <- file.path(procedure_root, "sas")
+  output_dir <- file.path(procedure_root, "migration-data", group, "lineage")
+
+  # Resolve manifest paths
+  manifest_paths <- character(0)
+  for (output in outputs) {
+    mp <- file.path(output_dir, output, "lineage-manifest.json")
+    if (!file.exists(mp)) {
+      cat(sprintf("Error: Manifest file not found: %s\n", mp))
+      return(1L)
+    }
+    manifest_paths <- c(manifest_paths, mp)
+  }
+
+  run_operations_graph_from_manifests(
+    sas_dir = sas_dir,
+    entrypoint = path_to_sas_entrypoint,
+    output_dir = output_dir,
+    manifest_paths = manifest_paths,
+    format = format,
+    verbose = verbose
+  )
 }

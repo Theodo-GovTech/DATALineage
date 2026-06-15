@@ -1,7 +1,7 @@
 Package: saslineager
 Title: SAS Data Lineage Analyzer
 Version: 0.1.0
-Authors@R: person("ATIH", email = "dev@atih.sante.fr", role = c("aut", "cre"))
+Authors@R: person("Matthieu de Canteloube", email = "matthieu.de-canteloube@theodo.com", role = c("aut", "cre"))
 Description: Traces SAS dataset lineage across source files, producing JSON
     manifests and markdown reports of the dependency graph.
 License: MIT + file LICENSE

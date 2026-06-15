@@ -29,43 +29,45 @@ R6, jsonlite, stringr, fs, cli, rlang
 ### CLI -- Lineage Analyzer
 
 ```bash
-Rscript bin/trace_lineage.R <procedure> <group> <output1> [<output2> ...]
+Rscript bin/trace_lineage.R <sas_dir> <output_dir> <output1> [<output2> ...]
 ```
 
 ```bash
 # Single output
-Rscript bin/trace_lineage.R had compta_group compta_exploit2
+Rscript bin/trace_lineage.R path/to/sas output/ compta_exploit2
 
 # Multiple outputs (parsed once, traced separately)
-Rscript bin/trace_lineage.R had compta_group output1 output2 output3
-```
-
-### CLI -- Cascade (Lineage + Graph)
-
-```bash
-Rscript bin/generate_lineage_and_graph.R <procedure> <entrypoint> <group> <outputs> [-f format] [-v]
-```
-
-```bash
-# Run both stages: trace lineage then build operations graph
-Rscript bin/generate_lineage_and_graph.R enc-mco sas/mco.enc.enc.2024.sas rsf "rsf1_1,rsf1_2" -f llm
+Rscript bin/trace_lineage.R path/to/sas output/ output1 output2 output3
 ```
 
 ### CLI -- Operations Graph
 
 ```bash
-Rscript bin/generate_operations_graph.R <procedure> <entrypoint> <group> <outputs> [-f format] [-v]
+Rscript bin/generate_operations_graph.R <sas_dir> <entrypoint> <output_dir> <manifest1> [<manifest2> ...] [-f format] [-v]
 ```
 
 ```bash
 # DOT format (default)
-Rscript bin/generate_operations_graph.R enc-mco sas/mco.enc.enc.2024.sas rsf "rsf1_1,rsf1_2"
+Rscript bin/generate_operations_graph.R path/to/sas path/to/sas/main.sas output/graph/ output/rsf1_1/lineage-manifest.json
 
-# LLM bundle (markdown graph, code extracts, spec index)
-Rscript bin/generate_operations_graph.R enc-mco sas/mco.enc.enc.2024.sas rsf "rsf1_1,rsf1_2" -f llm
+# Multiple manifests, LLM bundle
+Rscript bin/generate_operations_graph.R path/to/sas path/to/sas/main.sas output/graph/ \
+  output/rsf1_1/lineage-manifest.json output/rsf1_2/lineage-manifest.json -f llm
 
 # Verbose debug output
-Rscript bin/generate_operations_graph.R enc-mco sas/mco.enc.enc.2024.sas rsf "rsf1_1" -f dot -v
+Rscript bin/generate_operations_graph.R path/to/sas path/to/sas/main.sas output/graph/ \
+  output/rsf1_1/lineage-manifest.json -f dot -v
+```
+
+### CLI -- Cascade (Lineage + Graph)
+
+```bash
+Rscript bin/generate_lineage_and_graph.R <procedure> <entrypoint> <group> [-f format] [-v] <output1> [<output2> ...]
+```
+
+```bash
+# Run both stages: trace lineage then build operations graph
+Rscript bin/generate_lineage_and_graph.R enc-mco sas/mco.enc.enc.2024.sas rsf -f llm rsf1_1 rsf1_2
 ```
 
 ### Programmatic -- Lineage Analyzer
@@ -170,8 +172,6 @@ bin/
   trace_lineage.R           # CLI entrypoint for lineage tracing
   generate_operations_graph.R   # CLI entrypoint for operations graph
   generate_lineage_and_graph.R  # CLI entrypoint for cascade
-inst/
-  cross-language-harness.R  # Python/R comparison harness
 tests/
   testthat/        # Test modules
 ```

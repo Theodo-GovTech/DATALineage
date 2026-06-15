@@ -2,45 +2,50 @@
 # generate_operations_graph.R — CLI entrypoint for operations graph generation
 #
 # Usage:
-#   Rscript bin/generate_operations_graph.R <procedure> <entrypoint> <group> <output_dataset1> [<output_dataset2> ...] [-f format] [-v]
+#   Rscript bin/generate_operations_graph.R <sas_dir> <entrypoint> <output_dir> <manifest1> [<manifest2> ...] [-f format] [-v]
 #
 # Example:
-#   Rscript bin/generate_operations_graph.R enc-mco sas/mco.enc.enc.2024.sas rsf rsf1_1 rsf1_2 -f llm
+#   Rscript bin/generate_operations_graph.R sas/ sas/mco.enc.enc.2024.sas output/rsf/ output/rsf/rsf1_1/lineage-manifest.json -f llm
 
 args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) < 4L) {
-  cat("Usage: Rscript bin/generate_operations_graph.R <procedure> <path_to_sas_entrypoint> <group> <output_dataset1> [<output_dataset2> ...] [-f format] [-v]\n",
+  cat("Usage: Rscript bin/generate_operations_graph.R <sas_dir> <entrypoint> <output_dir> <manifest1> [<manifest2> ...] [-f format] [-v]\n",
       file = stderr())
   cat("\n  format:  dot (default), txt, llm\n", file = stderr())
   cat("  -v:      verbose debug output\n", file = stderr())
   quit(status = 2L)
 }
 
+# Resolve package root from the --file= argument passed by Rscript
+pkg_root <- {
+  file_arg <- grep("--file=", commandArgs(), value = TRUE)
+  if (length(file_arg) > 0L) {
+    dirname(dirname(normalizePath(sub("^--file=", "", file_arg[1L]))))
+  } else {
+    getwd()
+  }
+}
+
 # Load the package
 if (requireNamespace("pkgload", quietly = TRUE)) {
-  pkgload::load_all(
-    file.path(dirname(dirname(sys.frame(1)$ofile %||% ".")), "."),
-    quiet = TRUE
-  )
+  pkgload::load_all(pkg_root, quiet = TRUE)
 } else {
   # Fallback: source all R files directly
-  pkg_root <- dirname(dirname(normalizePath(commandArgs()[grep("--file=", commandArgs())])))
-  if (!nzchar(pkg_root)) pkg_root <- getwd()
   r_dir <- file.path(pkg_root, "R")
   for (f in sort(list.files(r_dir, pattern = "\\.R$", full.names = TRUE))) {
     source(f, local = FALSE)
   }
 }
 
-procedure  <- args[1]
+sas_dir    <- args[1]
 entrypoint <- args[2]
-group      <- args[3]
+output_dir <- args[3]
 
-# Parse optional flags and collect output datasets from remaining positional args
+# Parse optional flags and collect manifest paths from remaining positional args
 format  <- "dot"
 verbose <- FALSE
-outputs <- character(0)
+manifest_paths <- character(0)
 i <- 4L
 while (i <= length(args)) {
   if (args[i] %in% c("-f", "--format") && i < length(args)) {
@@ -50,24 +55,34 @@ while (i <= length(args)) {
     verbose <- TRUE
     i <- i + 1L
   } else {
-    outputs <- c(outputs, args[i])
+    manifest_paths <- c(manifest_paths, args[i])
     i <- i + 1L
   }
 }
 
-if (length(outputs) == 0L) {
-  cat("Error: at least one output dataset is required.\n", file = stderr())
+if (length(manifest_paths) == 0L) {
+  cat("Error: at least one manifest path is required.\n", file = stderr())
   quit(status = 2L)
 }
 
-cat(sprintf("Outputs group '%s' with %d output(s): %s\n",
-            group, length(outputs), paste(outputs, collapse = ", ")))
+# Validate manifest files exist
+for (mp in manifest_paths) {
+  if (!file.exists(mp)) {
+    cat(sprintf("Error: Manifest file not found: %s\n", mp), file = stderr())
+    quit(status = 1L)
+  }
+}
 
-rc <- run_operations_graph(
-  procedure = procedure,
-  path_to_sas_entrypoint = entrypoint,
-  group = group,
-  outputs = outputs,
+cat(sprintf("Manifests: %d file(s)\n", length(manifest_paths)))
+for (mp in manifest_paths) {
+  cat(sprintf("  - %s\n", mp))
+}
+
+rc <- run_operations_graph_from_manifests(
+  sas_dir = sas_dir,
+  entrypoint = entrypoint,
+  output_dir = output_dir,
+  manifest_paths = manifest_paths,
   format = format,
   verbose = verbose
 )
