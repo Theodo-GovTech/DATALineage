@@ -9,11 +9,86 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) < 4L) {
-  cat("Usage: Rscript bin/generate_operations_graph.R <sas_dir> <entrypoint> <output_dir> <manifest1> [<manifest2> ...] [-f format] [-v]\n",
-      file = stderr())
-  cat("\n  format:  dot (default), txt, llm\n", file = stderr())
-  cat("  -v:      verbose debug output\n", file = stderr())
+if (length(args) < 4L || any(args %in% c("-h", "--help"))) {
+  cat("
+generate_operations_graph.R — SAS Operations Graph Generator
+
+Builds an operations graph from one or more lineage manifests (produced by
+trace_lineage.R). The graph is constructed by walking SAS source code in
+execution order — following %include directives and macro expansion — starting
+from a given entrypoint file, then pruning to the subgraph of ancestors that
+feed the target datasets.
+
+USAGE
+  Rscript bin/generate_operations_graph.R <sas_dir> <entrypoint> <output_dir> \\
+      <manifest> [<manifest> ...] [OPTIONS]
+
+ARGUMENTS
+  sas_dir
+      Path to the directory containing SAS source files (.sas).
+      All .sas files (recursively) are scanned for FILENAME statements,
+      macro definitions, and %include resolution. Cross-procedure
+      include targets are also resolved when sibling migration-*
+      directories exist under the parent 'procedures/' folder.
+
+  entrypoint
+      Path to the SAS file that serves as the execution starting point
+      (absolute or relative). The code walker begins here and follows
+      %include directives and macro calls in execution order. This must
+      be the top-level SAS program that ultimately produces the target
+      datasets.
+
+  output_dir
+      Path to the directory where output files are written. Created
+      automatically if it does not exist. The files produced depend on
+      the chosen format (see -f/--format below).
+
+  manifest
+      One or more paths to lineage-manifest.json files (produced by
+      trace_lineage.R). Each manifest declares a target dataset and
+      the set of operations (with file/line locations) that build it.
+      Multiple manifests can be provided to generate a combined graph
+      covering several target datasets.
+
+OPTIONS
+  -f, --format FORMAT
+      Output format. One of:
+        dot   (default) Graphviz DOT file (lineage-graph.dot).
+              Render with: dot -Tpng lineage-graph.dot -o lineage-graph.png
+        txt   Plain-text node/edge list (lineage-graph.txt).
+        llm   LLM-optimized bundle. Produces four files:
+                lineage-graph.md          — dependency graph + infile mapping
+                lineage-code-extracts.md  — source code for every node
+                lineage-spec-index.md     — bucket layout for spec generation
+                lineage-spec-index.json   — machine-readable spec index
+
+  -v, --verbose
+      Enable verbose debug output. Prints detailed information about
+      macro resolution, include following, operation matching, and
+      edge creation. Also lists isolated nodes (up to 10) in the
+      final summary.
+
+EXAMPLES
+  # Generate a DOT graph from a single manifest:
+  Rscript bin/generate_operations_graph.R sas/ sas/main.sas output/ \\
+      output/rsf1_1/lineage-manifest.json
+
+  # Generate the LLM bundle from multiple manifests:
+  Rscript bin/generate_operations_graph.R sas/ sas/mco.enc.enc.2024.sas output/rsf/ \\
+      output/rsf/rsf1_1/lineage-manifest.json \\
+      output/rsf/rsf1_2/lineage-manifest.json \\
+      -f llm
+
+  # Verbose mode for debugging:
+  Rscript bin/generate_operations_graph.R sas/ sas/main.sas output/ \\
+      output/dataset/lineage-manifest.json -v
+
+EXIT CODES
+  0   Graph generated successfully.
+  1   Runtime error (missing manifest, missing entrypoint, target dataset
+      not reached by the entrypoint).
+  2   Invalid arguments.
+", file = stderr())
   quit(status = 2L)
 }
 

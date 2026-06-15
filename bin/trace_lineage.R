@@ -9,9 +9,51 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) < 3L) {
-  cat("Usage: Rscript bin/trace_lineage.R <sas_dir> <output_dir> <output_dataset1> [<output_dataset2> ...]\n",
-      file = stderr())
+if (length(args) < 3L || any(args %in% c("-h", "--help"))) {
+  cat("
+trace_lineage.R — SAS Data Lineage Analyzer
+
+Parses all SAS source files in a directory, traces the full dependency chain
+for one or more target output datasets, and generates a Markdown report and
+a JSON manifest for each target.
+
+USAGE
+  Rscript bin/trace_lineage.R <sas_dir> <output_dir> <output_dataset> [<output_dataset> ...]
+
+ARGUMENTS
+  sas_dir
+      Path to the directory containing SAS source files (.sas).
+      All .sas files in this directory (and subdirectories) are parsed.
+      Cross-procedure %include targets are also resolved automatically
+      when sibling migration-* directories exist under the parent
+      'procedures/' folder.
+
+  output_dir
+      Path to the base output directory. For each target dataset, a
+      subdirectory named after the dataset is created under this path,
+      containing:
+        <output_dir>/<dataset>/lineage-report.md
+        <output_dir>/<dataset>/lineage-manifest.json
+
+  output_dataset
+      One or more target dataset names to trace (case-insensitive).
+      Each name should match a SAS dataset produced by the code
+      (e.g. 'compta_exploit2', 'work.my_table'). The analyzer walks
+      the dependency graph backwards from each target, collecting every
+      intermediate dataset and input file that contributes to it.
+
+EXAMPLES
+  # Trace a single output:
+  Rscript bin/trace_lineage.R procedures/migration-had/sas lineage compta_exploit2
+
+  # Trace multiple outputs in one run (SAS files are parsed only once):
+  Rscript bin/trace_lineage.R sas/ output/ rsf1_1 rsf1_2
+
+EXIT CODES
+  0   All targets traced successfully.
+  1   One or more targets produced no lineage (missing dataset).
+  2   Invalid arguments.
+", file = stderr())
   quit(status = 2L)
 }
 
