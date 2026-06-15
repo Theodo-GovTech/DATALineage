@@ -1,0 +1,27 @@
+# R / RStudio
+.Rproj.user
+.Rhistory
+.Rdata
+.RData
+.httr-oauth
+*.Rproj
+
+# Package build artifacts
+src/*.o
+src/*.so
+src/*.dll
+*.tar.gz
+
+# Output directory
+output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Claude
+.claude/
