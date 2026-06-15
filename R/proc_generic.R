@@ -9,6 +9,11 @@
 .TABLE_STMT_RE <- "\\btables?\\b"
 
 #' Parse a generic PROC step (TRANSPOSE, APPEND, MEANS, SUMMARY, FREQ, UNIVARIATE)
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index where the PROC step starts
+#' @param filepath Character path to the source file
+#' @param proc_type Character PROC type name (e.g. "transpose", "freq")
+#' @return Named list operation, or `NULL` when no output dataset is found
 #' @export
 parse_proc_generic <- function(lines, start_idx, filepath, proc_type) {
   proc_type_lower <- tolower(proc_type)

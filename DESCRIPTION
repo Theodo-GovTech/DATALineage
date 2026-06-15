@@ -1,22 +1,23 @@
 Package: saslineager
 Title: SAS Data Lineage Analyzer
 Version: 0.1.0
-Authors@R: person("Matthieu de Canteloube", email = "matthieu.de-canteloube@theodo.com", role = c("aut", "cre"))
-Description: Traces SAS dataset lineage across source files, producing JSON
-    manifests and markdown reports of the dependency graph.
+Authors@R:
+    person("Matthieu", "de Canteloube", email = "matthieu.de-canteloube@theodo.com", role = c("aut", "cre"))
+Description: Traces SAS dataset lineage across source files, producing
+    JSON manifests and markdown reports of the dependency graph.
 License: MIT + file LICENSE
-Encoding: UTF-8
-Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 Depends:
     R (>= 4.1.0)
 Imports:
-    R6,
     jsonlite,
-    stringr,
-    fs,
-    cli,
-    rlang
+    R6,
+    rlang,
+    stats,
+    utils
 Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
+Encoding: UTF-8
+Language: en-US
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3

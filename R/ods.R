@@ -47,7 +47,13 @@
   list(inputs = inputs, seen = seen)
 }
 
-#' Parse an ODS tagsets.csv / xml / csv block
+#' Parse an ODS `tagsets.csv` / `xml` / `csv` block
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index where the ODS block starts
+#' @param filepath Character path to the source file
+#' @param macro_definitions Optional list of known macro definitions
+#' @param filename_refs Optional named list of FILENAME references
+#' @return List with `operation` and `end_idx` (1-based), or `NULL`
 #' @export
 parse_ods_tagsets_csv <- function(lines, start_idx, filepath,
                                    macro_definitions = NULL, filename_refs = NULL) {

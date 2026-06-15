@@ -1,6 +1,9 @@
 # data_step.R — DATA step parsing (ported from parsers/data_step.py)
 
 #' Extract the full DATA statement (may span multiple lines)
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index of the line with the DATA statement
+#' @return Character single-line DATA statement
 #' @export
 extract_data_statement <- function(lines, start_idx) {
   parts <- lines[[start_idx]]
@@ -14,6 +17,8 @@ extract_data_statement <- function(lines, start_idx) {
 }
 
 #' Parse output dataset names from DATA statement
+#' @param data_statement Character full DATA statement
+#' @return Character vector of output dataset names, or `NULL` when none
 #' @export
 parse_data_output_datasets <- function(data_statement) {
   m <- regmatches(data_statement, regexec(
@@ -30,6 +35,12 @@ parse_data_output_datasets <- function(data_statement) {
 }
 
 #' Collect input datasets and INFILE references from DATA step body
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index where the DATA step starts
+#' @param filepath Character path to the source file
+#' @param output_ds Character output dataset name for the DATA step
+#' @return List with `input_datasets`, `code_lines`, `end_line`, and
+#'   `infile_records`
 #' @export
 collect_data_step_inputs <- function(lines, start_idx, filepath, output_ds) {
   input_datasets <- character(0)
@@ -145,6 +156,11 @@ collect_data_step_inputs <- function(lines, start_idx, filepath, output_ds) {
 }
 
 #' Parse a DATA step to extract output and input datasets
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index where the DATA step starts
+#' @param filepath Character path to the source file
+#' @return List with `operations` and `infile_records`, or `NULL` when the
+#'   DATA step produces no output dataset
 #' @export
 parse_data_step <- function(lines, start_idx, filepath) {
   data_statement <- extract_data_statement(lines, start_idx)

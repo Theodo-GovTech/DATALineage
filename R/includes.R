@@ -5,6 +5,9 @@
 .MACRO_VAR_REF_INC_RE <- "&([A-Za-z_]\\w*)\\.?"
 
 #' Substitute known macro-var references in a path
+#' @param path Character path possibly containing macro variable references
+#' @param macro_variables Named list of known macro variable values
+#' @return Character path with known macro variables substituted
 #' @export
 substitute_macro_vars <- function(path, macro_variables) {
   if (is.null(macro_variables) || length(macro_variables) == 0L) return(path)
@@ -68,7 +71,12 @@ substitute_macro_vars <- function(path, macro_variables) {
   NULL
 }
 
-#' Resolve %include path against including file location
+#' Resolve an `%include` path against the including file location
+#' @param include_path Character include target path (quoted literal)
+#' @param including_file Character path to the file containing the `%include`
+#' @param macro_variables Named list of known macro variable values
+#' @param search_roots Character vector of directories to search as a fallback
+#' @return Character resolved file path, or `NULL` when unresolved
 #' @export
 resolve_include_target <- function(include_path, including_file,
                                     macro_variables = NULL, search_roots = NULL) {
@@ -98,7 +106,16 @@ resolve_include_target <- function(include_path, including_file,
   NULL
 }
 
-#' Resolve %include fileref using the latest visible filename statement
+#' Resolve an `%include` fileref using the latest visible FILENAME statement
+#' @param including_file Character path to the file containing the `%include`
+#' @param include_line Integer 1-based line of the `%include`
+#' @param fileref Character fileref referenced by the `%include`
+#' @param file_fileref_definitions List or environment of FILENAME definitions
+#'   keyed by file
+#' @param macro_variables Named list of known macro variable values
+#' @param search_roots Character vector of directories to search as a fallback
+#' @param global_filename_refs Named list of global fileref definitions
+#' @return Character resolved file path, or `NULL` when unresolved
 #' @export
 resolve_fileref_include_target <- function(including_file, include_line, fileref,
                                             file_fileref_definitions,
@@ -151,7 +168,14 @@ resolve_fileref_include_target <- function(including_file, include_line, fileref
   )
 }
 
-#' Parse %include statements from a SAS file
+#' Parse `%include` statements from a SAS file
+#' @param filepath Character path to the SAS source file
+#' @param file_fileref_definitions List or environment of FILENAME definitions
+#'   keyed by file
+#' @param macro_variables Named list of known macro variable values
+#' @param search_roots Character vector of directories to search as a fallback
+#' @param global_filename_refs Named list of global fileref definitions
+#' @return List of include records, each with `line` and `target`
 #' @export
 parse_include_statements <- function(filepath, file_fileref_definitions,
                                       macro_variables = NULL, search_roots = NULL,
@@ -201,13 +225,22 @@ parse_include_statements <- function(filepath, file_fileref_definitions,
   includes
 }
 
-#' Get macro name from a macro definition
+#' Get the macro name from a macro definition
+#' @param macro_def Macro definition record
+#' @return Character macro name
 #' @export
 extract_macro_name_from_def <- function(macro_def) {
   macro_def$name
 }
 
-#' Build ordered local events (include + macro def) for one file
+#' Build ordered local events (include + macro definition) for one file
+#' @param filepath Character path to the SAS source file
+#' @param file_includes List or environment of include events keyed by file
+#' @param file_macro_definitions List or environment of macro definition events
+#'   keyed by file
+#' @param max_line Optional integer; only events strictly before this line are
+#'   returned
+#' @return List of event records sorted by line
 #' @export
 get_file_events <- function(filepath, file_includes, file_macro_definitions,
                              max_line = NULL) {
@@ -253,6 +286,15 @@ get_file_events <- function(filepath, file_includes, file_macro_definitions,
 }
 
 #' Return visible macros after executing a file in source order
+#' @param filepath Character path to the SAS source file
+#' @param file_macro_exports_cache List or environment caching exported macros
+#'   per file
+#' @param file_includes List or environment of include events keyed by file
+#' @param file_macro_definitions List or environment of macro definition events
+#'   keyed by file
+#' @param visiting Character vector of files currently being visited, used to
+#'   guard against include cycles
+#' @return Named list of macro definitions visible after the file executes
 #' @export
 get_exported_macros_for_file <- function(filepath, file_macro_exports_cache,
                                           file_includes, file_macro_definitions,

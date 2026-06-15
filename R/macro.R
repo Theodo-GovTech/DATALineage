@@ -8,8 +8,10 @@
 .INLINE_EMPTY_MACRO_RE <- "%macro\\s+\\w+[^;]*;\\s*%mend"
 .MACRO_HEAD_RE <- "^\\s*%macro\\s+\\w+"
 
-#' Find matching %mend for %macro at start_idx (1-based)
-#' @return 1-based line of %mend, or -1
+#' Find matching `%mend` for the `%macro` at `start_idx` (1-based)
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index of the `%macro` line
+#' @return Integer 1-based line of the matching `%mend`, or -1 if none
 #' @export
 find_macro_end <- function(lines, start_idx) {
   head <- lines[[start_idx]]
@@ -38,7 +40,11 @@ find_macro_end <- function(lines, start_idx) {
   -1L
 }
 
-#' Parse a %let var = value; statement
+#' Parse a `%let var = value;` statement
+#' @param line Character source line containing the `%let` statement
+#' @param filepath Character path to the source file
+#' @param line_num Integer 1-based line number of the statement
+#' @return Named list operation describing the macro variable, or `NULL`
 #' @export
 parse_let_statement <- function(line, filepath, line_num) {
   m <- regmatches(line, regexec(.LET_STMT_RE, line, perl = TRUE, ignore.case = TRUE))[[1]]
@@ -78,6 +84,8 @@ parse_let_statement <- function(line, filepath, line_num) {
 .MACRO_DEF_BARE_RE <- "^\\s*%macro\\s+(\\w+)\\s*;"
 
 #' Parse macro definitions from a SAS file
+#' @param filepath Character path to the SAS source file
+#' @return List of macro definition records keyed by macro name
 #' @export
 parse_macro_definitions <- function(filepath) {
   filepath <- normalizePath(filepath, mustWork = FALSE)
@@ -150,6 +158,12 @@ parse_macro_definitions <- function(filepath) {
 }
 
 #' Expand a macro call with given arguments
+#' @param macro_name Character name of the macro being expanded
+#' @param args Character vector of positional or named call arguments
+#' @param macro_definitions List of known macro definitions
+#' @param macro_def Optional pre-resolved macro definition; resolved from
+#'   `macro_definitions` when `NULL`
+#' @return List with `lines` (expanded body) and `source_lines` (origin lines)
 #' @export
 expand_macro <- function(macro_name, args, macro_definitions, macro_def = NULL) {
   if (is.null(macro_def)) {
@@ -223,7 +237,11 @@ expand_macro <- function(macro_name, args, macro_definitions, macro_def = NULL) 
 .DO_RE <- "%do\\b"
 .END_RE <- "%end\\b"
 
-#' Unroll simple %do var=A %to B loops with integer bounds
+#' Unroll simple `%do var=A %to B` loops with integer bounds
+#' @param lines Character vector of macro body lines
+#' @param source_lines Integer vector of origin line numbers, aligned to `lines`
+#' @param max_iterations Integer cap on total unrolled iterations
+#' @return List with `lines` (unrolled body) and `source_lines` (origin lines)
 #' @export
 unroll_do_loops <- function(lines, source_lines, max_iterations = 200L) {
   out_lines <- character(0)
@@ -289,6 +307,13 @@ unroll_do_loops <- function(lines, source_lines, max_iterations = 200L) {
 }
 
 #' Resolve macro definition visible at call site using event order
+#' @param macro_name Character name of the macro to resolve
+#' @param call_file Character path to the file containing the call
+#' @param call_line Integer 1-based line of the call
+#' @param file_includes List of include events keyed by file
+#' @param file_macro_definitions List of macro definition events keyed by file
+#' @param file_macro_exports_cache Environment caching exported macros per file
+#' @return Macro definition record visible at the call site, or `NULL`
 #' @export
 resolve_macro_definition <- function(macro_name, call_file, call_line,
                                       file_includes, file_macro_definitions,
