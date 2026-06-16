@@ -1159,8 +1159,8 @@ OperationsGraphGenerator <- R6::R6Class("OperationsGraphGenerator",
     display_file = function(op_node) {
       rel <- tryCatch({
         # Make path relative to sas_dir
-        sas_dir_norm <- normalizePath(self$sas_dir, mustWork = FALSE)
-        fp_norm <- normalizePath(op_node$file_path, mustWork = FALSE)
+        sas_dir_norm <- normalizePath(self$sas_dir, winslash = "/", mustWork = FALSE)
+        fp_norm <- normalizePath(op_node$file_path, winslash = "/", mustWork = FALSE)
         if (startsWith(fp_norm, paste0(sas_dir_norm, "/"))) {
           substring(fp_norm, nchar(sas_dir_norm) + 2L)
         } else {

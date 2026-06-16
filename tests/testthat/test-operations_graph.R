@@ -1413,41 +1413,34 @@ test_that("find_best_macro: no definitions returns NULL", {
 test_that("find_best_macro: same-file priority", {
   with_temp_sas_dir(list("test.sas" = "/* test */"), function(dir) {
     gen <- make_test_generator(dir)
-    macro_same <- new_og_macro_definition("m", "/path/test.sas", 1, 3, character(0))
-    macro_other <- new_og_macro_definition("m", "/path/other.sas", 1, 3, character(0))
-    # Need files to exist for macro_has_body
-    dir.create("/tmp/og_test_best_macro", showWarnings = FALSE)
-    on.exit(unlink("/tmp/og_test_best_macro", recursive = TRUE), add = TRUE)
-    writeLines(c("%macro m;", "  data x; run;", "%mend;"),
-               "/tmp/og_test_best_macro/test.sas")
-    writeLines(c("%macro m;", "  data y; run;", "%mend;"),
-               "/tmp/og_test_best_macro/other.sas")
-    macro_same$file_path <- "/tmp/og_test_best_macro/test.sas"
-    macro_other$file_path <- "/tmp/og_test_best_macro/other.sas"
+    same_path <- file.path(dir, "macro_same.sas")
+    other_path <- file.path(dir, "macro_other.sas")
+    writeLines(c("%macro m;", "  data x; run;", "%mend;"), same_path)
+    writeLines(c("%macro m;", "  data y; run;", "%mend;"), other_path)
+    macro_same <- new_og_macro_definition("m", same_path, 1, 3, character(0))
+    macro_other <- new_og_macro_definition("m", other_path, 1, 3, character(0))
+    macro_same$file_path <- same_path
+    macro_other$file_path <- other_path
     gen$macro_definitions[["m"]] <- list(macro_other, macro_same)
-    result <- gen$.__enclos_env__$private$find_best_macro(
-      "m", "/tmp/og_test_best_macro/test.sas", 10
-    )
-    expect_equal(result$file_path, "/tmp/og_test_best_macro/test.sas")
+    result <- gen$.__enclos_env__$private$find_best_macro("m", same_path, 10)
+    expect_equal(result$file_path, same_path)
   })
 })
 
 test_that("find_best_macro: fallback to first definition", {
   with_temp_sas_dir(list("test.sas" = "/* test */"), function(dir) {
     gen <- make_test_generator(dir)
-    dir.create("/tmp/og_test_fallback", showWarnings = FALSE)
-    on.exit(unlink("/tmp/og_test_fallback", recursive = TRUE), add = TRUE)
-    writeLines(c("%macro m;", "  data x; run;", "%mend;"),
-               "/tmp/og_test_fallback/other1.sas")
-    writeLines(c("%macro m;", "  data y; run;", "%mend;"),
-               "/tmp/og_test_fallback/other2.sas")
-    macro1 <- new_og_macro_definition("m", "/tmp/og_test_fallback/other1.sas", 1, 3)
-    macro2 <- new_og_macro_definition("m", "/tmp/og_test_fallback/other2.sas", 1, 3)
+    other1 <- file.path(dir, "other1.sas")
+    other2 <- file.path(dir, "other2.sas")
+    writeLines(c("%macro m;", "  data x; run;", "%mend;"), other1)
+    writeLines(c("%macro m;", "  data y; run;", "%mend;"), other2)
+    macro1 <- new_og_macro_definition("m", other1, 1, 3)
+    macro2 <- new_og_macro_definition("m", other2, 1, 3)
     gen$macro_definitions[["m"]] <- list(macro1, macro2)
     result <- gen$.__enclos_env__$private$find_best_macro(
-      "m", "/path/test.sas", 10
+      "m", file.path(dir, "absent.sas"), 10
     )
-    expect_equal(result$file_path, "/tmp/og_test_fallback/other1.sas")
+    expect_equal(result$file_path, other1)
   })
 })
 

@@ -32,13 +32,13 @@ run_operations_graph_from_manifests <- function(sas_dir, entrypoint,
                                                 output_dir, manifest_paths,
                                                 format = "dot", verbose = FALSE) {
   # Resolve entrypoint relative to sas_dir
-  entrypoint_file <- normalizePath(entrypoint, mustWork = FALSE)
+  entrypoint_file <- normalizePath(entrypoint, winslash = "/", mustWork = FALSE)
   if (!file.exists(entrypoint_file)) {
     cat(sprintf("Error: Entrypoint file not found: %s\n", entrypoint_file))
     return(1L)
   }
 
-  sas_dir_resolved <- normalizePath(sas_dir, mustWork = FALSE)
+  sas_dir_resolved <- normalizePath(sas_dir, winslash = "/", mustWork = FALSE)
   if (!startsWith(entrypoint_file, paste0(sas_dir_resolved, "/"))) {
     if (!startsWith(entrypoint_file, sas_dir_resolved)) {
       cat(sprintf("Error: Entrypoint %s is not under %s\n",

@@ -29,7 +29,7 @@ test_that("resolve_include_target relative path", {
 test_that("get_file_events returns sorted events", {
   file_includes <- list()
   file_macro_definitions <- list()
-  fp <- "/fake/test.sas"
+  fp <- normalizePath("/fake/test.sas", mustWork = FALSE)
   file_includes[[fp]] <- list(
     list(line = 5L, target = "/fake/inc.sas"),
     list(line = 1L, target = "/fake/inc2.sas")
