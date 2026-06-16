@@ -168,7 +168,7 @@ run_operations_graph <- function(procedure, path_to_sas_entrypoint,
                                   project_root = NULL) {
   if (is.null(project_root)) {
     project_root <- tryCatch({
-      pkg_dir <- system.file(package = "saslineager")
+      pkg_dir <- system.file(package = "DATALineage")
       if (nzchar(pkg_dir)) dirname(dirname(pkg_dir)) else getwd()
     }, error = function(e) getwd())
   }

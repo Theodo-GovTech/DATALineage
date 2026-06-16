@@ -88,7 +88,9 @@ parse_proc_format <- function(lines, start_idx, filepath) {
 
 .FORMAT_REF_PUT_RE <- "\\bput\\s*\\(\\s*[^,()]+,\\s*(\\$?[A-Za-z_][\\w]*)(?:\\d+)?(?:\\.\\d+)?\\s*\\.\\s*\\)"
 
-#' Return ordered, de-duplicated user-defined format names referenced via put()
+#' Return ordered, de-duplicated user-defined format names referenced via `put()`
+#' @param code_lines Character vector of source code lines to scan
+#' @return Character vector of referenced user-defined format names
 #' @export
 scan_format_refs <- function(code_lines) {
   refs <- character(0)

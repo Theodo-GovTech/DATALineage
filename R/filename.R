@@ -14,6 +14,8 @@
 .NON_WORD_EDGE_RE <- "^[^\\w]+|[^\\w]+$"
 
 #' Derive a dataset-style name from a (possibly macro-laden) path literal
+#' @param path Character path literal, possibly containing macro references
+#' @return Character lower-cased dataset name, or `NULL` when empty
 #' @export
 path_to_dataset_name <- function(path) {
   if (is.null(path) || !nzchar(path)) return(NULL)
@@ -30,7 +32,9 @@ path_to_dataset_name <- function(path) {
   if (nzchar(result)) result else NULL
 }
 
-#' Normalize a fileref — lowercase and strip embedded macro references
+#' Normalize a fileref by lower-casing and stripping embedded macro references
+#' @param fileref Character fileref token, possibly with macro references
+#' @return Character normalized fileref, or `NULL` when the input is `NULL`
 #' @export
 normalize_fileref <- function(fileref) {
   if (is.null(fileref)) return(NULL)
@@ -38,6 +42,8 @@ normalize_fileref <- function(fileref) {
 }
 
 #' Parse FILENAME statements to map filerefs to actual paths
+#' @param filepath Character path to the SAS source file
+#' @return List with `filename_refs` and `file_fileref_definitions`
 #' @export
 parse_filename_statements <- function(filepath) {
   filepath <- normalizePath(filepath, mustWork = FALSE)

@@ -19,6 +19,18 @@ is_input_lib <- function(lib) {
 # --- Operation as named list ---
 
 #' Create a new operation (named list)
+#' @param dataset Character output dataset name
+#' @param operation_type Character operation type (e.g. "DATA", "PROC SQL")
+#' @param file Character path to the source file
+#' @param line_number Integer 1-based line where the operation starts
+#' @param code_snippet Character source code for the operation
+#' @param input_datasets Character vector of input dataset names
+#' @param end_line Integer 1-based line where the operation ends
+#' @param macro_name Character macro name when defined inside a macro, or NULL
+#' @param macro_source_file Character path to the macro definition file, or NULL
+#' @param macro_source_line Integer line of the macro definition, or NULL
+#' @param macro_end_line Integer end line of the macro definition, or NULL
+#' @return Named list describing the operation
 #' @export
 new_operation <- function(dataset, operation_type, file, line_number,
                           code_snippet, input_datasets, end_line,
@@ -40,6 +52,9 @@ new_operation <- function(dataset, operation_type, file, line_number,
 }
 
 #' Create a copy of an operation with some fields replaced
+#' @param op Named list operation to copy
+#' @param ... Named fields to replace in the copy
+#' @return Named list with the replaced fields and coerced integer line fields
 #' @export
 replace_operation <- function(op, ...) {
   replacements <- list(...)
@@ -58,6 +73,10 @@ replace_operation <- function(op, ...) {
 # --- Utility: defaultdict(list) replacement ---
 
 #' Append a value to a key in an environment (hash-map), creating the key if absent
+#' @param env Environment used as a hash-map
+#' @param key Character key to append to
+#' @param value Value to append to the list stored under `key`
+#' @return Invisibly `NULL`; called for its side effect on `env`
 #' @export
 append_to <- function(env, key, value) {
   if (exists(key, envir = env, inherits = FALSE)) {
@@ -109,6 +128,8 @@ env_get <- function(env, key, default = list()) {
 }
 
 #' Clean a SAS dataset name
+#' @param name Character raw dataset token to clean
+#' @return Character cleaned, lower-cased dataset name, or `NULL` when empty
 #' @export
 clean_dataset_name <- function(name) {
   name <- trimws(.strip_dataset_options(trimws(name)))
@@ -130,6 +151,8 @@ clean_dataset_name <- function(name) {
 }
 
 #' Remove duplicates from a character vector while preserving order
+#' @param items Character vector possibly containing duplicates
+#' @return Character vector with duplicates removed, first occurrence kept
 #' @export
 deduplicate_list <- function(items) {
   seen <- character(0)
@@ -144,6 +167,8 @@ deduplicate_list <- function(items) {
 }
 
 #' Expand SAS numbered dataset ranges like s1-s4
+#' @param name Character dataset token possibly encoding a numbered range
+#' @return Character vector of expanded names, or the input unchanged
 #' @export
 expand_numbered_range <- function(name) {
   m <- regmatches(name, regexec(.RE_NUMBERED_RANGE, name, perl = TRUE))[[1]]
@@ -164,6 +189,9 @@ expand_numbered_range <- function(name) {
 }
 
 #' Parse dataset names from a string, handling nested parentheses for options
+#' @param datasets_str Character string listing one or more dataset tokens
+#' @param exclude_keywords Character vector of keywords to skip
+#' @return Character vector of cleaned dataset names
 #' @export
 parse_dataset_names_with_parens <- function(datasets_str, exclude_keywords = character(0)) {
   dataset_names <- character(0)
@@ -209,6 +237,8 @@ parse_dataset_names_with_parens <- function(datasets_str, exclude_keywords = cha
 }
 
 #' Remove SAS block comments from a string
+#' @param s Character string possibly containing `/* ... */` comments
+#' @return Character string with block comments replaced by spaces
 #' @export
 strip_sas_block_comments <- function(s) {
   out <- character(0)
@@ -241,6 +271,8 @@ strip_sas_block_comments <- function(s) {
 )
 
 #' Replace macro control-flow tokens with spaces
+#' @param s Character string possibly containing macro control-flow tokens
+#' @return Character string with control-flow tokens replaced by spaces
 #' @export
 strip_macro_control_flow <- function(s) {
   m <- gregexpr(.MACRO_CTRL_KEYWORDS_RE, s, perl = TRUE, ignore.case = TRUE)
@@ -252,7 +284,8 @@ strip_macro_control_flow <- function(s) {
 }
 
 #' Find first semicolon not inside parentheses or quotes
-#' @return 1-based index or -1
+#' @param s Character string to scan
+#' @return Integer 1-based index of the terminating semicolon, or -1 if none
 #' @export
 find_statement_end_semicolon <- function(s) {
   paren <- 0L
@@ -301,6 +334,9 @@ find_statement_end_semicolon <- function(s) {
 }
 
 #' Create a new operation with corrected line numbers
+#' @param operation Named list operation to adjust
+#' @param new_line_number Integer corrected 1-based start line
+#' @return Named list operation with shifted `line_number` and `end_line`
 #' @export
 fix_operation_line_number <- function(operation, new_line_number) {
   offset <- new_line_number - operation$line_number
@@ -320,6 +356,8 @@ fix_operation_line_number <- function(operation, new_line_number) {
 )
 
 #' Return ordered, de-duplicated macro variable names referenced in code
+#' @param code_lines Character vector of source code lines to scan
+#' @return Character vector of referenced macro variable names
 #' @export
 scan_macro_var_refs <- function(code_lines) {
   refs <- character(0)

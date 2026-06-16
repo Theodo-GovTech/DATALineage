@@ -2,3 +2,6 @@
 ^\.Rproj\.user$
 ^bin$
 ^inst/cross-language-harness\.R$
+^dev$
+^LICENSE\.md$
+^generate_png\.sh$

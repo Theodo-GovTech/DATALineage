@@ -84,8 +84,8 @@ node_identity <- function(node) {
 #'
 #' @param name Character macro name (lower-cased)
 #' @param file_path Character full path to where macro is defined
-#' @param start_line Integer line with \%macro (1-based)
-#' @param end_line Integer line with \%mend (1-based)
+#' @param start_line Integer line with the `%macro` statement (1-based)
+#' @param end_line Integer line with the `%mend` statement (1-based)
 #' @param params Character vector of parameter names
 #' @return Named list
 #' @keywords internal

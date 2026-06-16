@@ -79,6 +79,8 @@
 }
 
 #' Extract table names from FROM and JOIN clauses
+#' @param buffer Character SQL statement text to scan
+#' @return Character vector of referenced table (dataset) names
 #' @export
 extract_sql_tables <- function(buffer) {
   datasets <- character(0)
@@ -195,6 +197,9 @@ extract_sql_tables <- function(buffer) {
 }
 
 #' Collect input tables from a single SQL statement
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index where the SQL statement starts
+#' @return List with `input_datasets`, `code_lines`, and `stmt_end_idx`
 #' @export
 collect_sql_statement_inputs <- function(lines, start_idx) {
   code_lines <- character(0)
@@ -234,6 +239,10 @@ collect_sql_statement_inputs <- function(lines, start_idx) {
 }
 
 #' Parse a single PROC SQL CREATE TABLE statement
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index where the statement starts
+#' @param filepath Character path to the source file
+#' @return List with `targets`, `inputs`, and `stmt_end_idx`
 #' @export
 parse_proc_sql <- function(lines, start_idx, filepath) {
   line <- lines[[start_idx]]
@@ -302,6 +311,10 @@ parse_proc_sql <- function(lines, start_idx, filepath) {
 }
 
 #' Parse a complete PROC SQL block
+#' @param lines Character vector of file lines
+#' @param start_idx Integer 1-based index where the PROC SQL block starts
+#' @param filepath Character path to the source file
+#' @return List with `operations` and `end_line` (1-based)
 #' @export
 parse_proc_sql_block <- function(lines, start_idx, filepath) {
   proc_sql_line <- start_idx
