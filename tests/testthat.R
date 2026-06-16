@@ -1,4 +1,4 @@
 library(testthat)
-library(saslineager)
+library(DATALineage)
 
-test_check("saslineager")
+test_check("DATALineage")

@@ -1,4 +1,4 @@
-Package: saslineager
+Package: DATALineage
 Title: SAS Data Lineage Analyzer
 Version: 0.1.0
 Authors@R:

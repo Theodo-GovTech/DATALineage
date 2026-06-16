@@ -1,4 +1,4 @@
-# saslineager
+# DATALineage
 
 R package for SAS lineage analysis. It traces dataset lineage across source files, produces JSON manifests and Markdown reports of the dependency graph, and generates operations graphs that show how data flows through a SAS pipeline.
 

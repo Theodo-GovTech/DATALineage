@@ -1,4 +1,4 @@
-# helper-utils.R — Test utilities for saslineager test suite
+# helper-utils.R - Test utilities for DATALineage test suite
 
 #' Create a temporary SAS file with given content, call `fun(filepath)`,
 #' then clean up.

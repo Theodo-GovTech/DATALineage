@@ -464,7 +464,7 @@ OperationsGraphGenerator <- R6::R6Class("OperationsGraphGenerator",
     default_include_search_roots = function() {
       pkg_root <- tryCatch({
         # Try to locate project root relative to the package
-        pkg_dir <- system.file(package = "saslineager")
+        pkg_dir <- system.file(package = "DATALineage")
         if (nzchar(pkg_dir)) dirname(dirname(pkg_dir)) else getwd()
       }, error = function(e) getwd())
       procedures_dir <- file.path(pkg_root, "procedures")
