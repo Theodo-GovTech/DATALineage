@@ -279,3 +279,269 @@ test_that("empty stub does not shadow real macro in global lookup", {
   body2 <- paste0(kept2$body, collapse = "")
   expect_true(grepl("data target", body2))
 })
+
+# --- find_macro_end: direct coverage of edge branches ---
+
+test_that("find_macro_end returns -1 when no %mend closes the macro", {
+  lines <- c(
+    "%macro never_closed();",
+    "    data out; set in; run;"
+  )
+  expect_equal(find_macro_end(lines, 1L), -1L)
+})
+
+test_that("find_macro_end skips a block comment with trailing code in body", {
+  # The comment ends on line 3 with a trailing '%mend;' remainder, exercising
+  # the replacement-rewrite branch inside the body scan.
+  lines <- c(
+    "%macro m();",
+    "    data out; set in; run;",
+    "/* multi",
+    "   line comment */ %mend;"
+  )
+  expect_equal(find_macro_end(lines, 1L), 4L)
+})
+
+test_that("find_macro_end handles inline empty macro on first line", {
+  lines <- c("%macro stub; %mend;")
+  expect_equal(find_macro_end(lines, 1L), 1L)
+})
+
+test_that("find_macro_end tracks nesting depth across lines", {
+  lines <- c(
+    "%macro outer();",
+    "    %macro inner();",
+    "    %mend;",
+    "%mend;"
+  )
+  expect_equal(find_macro_end(lines, 1L), 4L)
+})
+
+# --- parse_let_statement: direct, public-API coverage ---
+
+test_that("parse_let_statement parses a plain assignment with no refs", {
+  op <- parse_let_statement("%let year = 2024;", "f.sas", 7L)
+  expect_false(is.null(op))
+  expect_equal(op$dataset, "mv:year")
+  expect_equal(op$operation_type, "MACRO LET")
+  expect_equal(op$file, "f.sas")
+  expect_equal(op$line_number, 7L)
+  expect_equal(op$end_line, 7L)
+  expect_equal(op$input_datasets, character(0))
+})
+
+test_that("parse_let_statement returns NULL on a non-%let line", {
+  expect_null(parse_let_statement("data out; set in; run;", "f.sas", 1L))
+})
+
+test_that("parse_let_statement extracts single macro-var reference as input", {
+  op <- parse_let_statement("%let target = &source.;", "f.sas", 3L)
+  expect_equal(op$dataset, "mv:target")
+  expect_equal(op$input_datasets, "mv:source")
+})
+
+test_that("parse_let_statement deduplicates repeated refs and lowercases", {
+  op <- parse_let_statement("%let x = &A.&A.&B;", "f.sas", 2L)
+  expect_equal(op$input_datasets, c("mv:a", "mv:b"))
+})
+
+test_that("parse_let_statement handles double-ampersand reference", {
+  op <- parse_let_statement("%let v = &&inner;", "f.sas", 1L)
+  expect_equal(op$input_datasets, "mv:inner")
+})
+
+test_that("parse_let_statement strips a trailing newline from the snippet", {
+  op <- parse_let_statement("%let z = 1;\n", "f.sas", 4L)
+  expect_equal(op$code_snippet, "%let z = 1;")
+})
+
+test_that("parse_let_statement is case-insensitive on the %LET keyword", {
+  op <- parse_let_statement("%LET Region = NORTH;", "f.sas", 1L)
+  expect_equal(op$dataset, "mv:region")
+})
+
+# --- parse_macro_definitions: block-comment-with-remainder at top level ---
+
+test_that("parse_macro_definitions sees a macro after an inline-closed comment", {
+  with_temp_sas(
+    paste0(
+      "/* leading comment */ %macro after_comment();\n",
+      "    data out; set in; run;\n",
+      "%mend;\n"
+    ),
+    function(f) {
+      defs <- parse_macro_definitions(f)
+      names_found <- vapply(defs, function(d) {
+        d$name
+      }, character(1))
+      expect_true("after_comment" %in% names_found)
+    }
+  )
+})
+
+# --- .try_parse_macro_definition body scan: comment-with-remainder branch ---
+
+test_that("parse_macro_definitions keeps body code trailing a block comment", {
+  with_temp_sas(
+    paste0(
+      "%macro bodycmt();\n",
+      "/* note */ data kept; set src; run;\n",
+      "%mend;\n"
+    ),
+    function(f) {
+      defs <- parse_macro_definitions(f)
+      def <- Filter(function(d) {
+        d$name == "bodycmt"
+      }, defs)[[1]]
+      body <- paste0(def$body, collapse = " ")
+      expect_true(grepl("data kept", body))
+    }
+  )
+})
+
+test_that("parse_macro_definitions captures params and bare-macro defs", {
+  with_temp_sas(
+    paste0(
+      "%macro withp(a, b);\n",
+      "    data o; run;\n",
+      "%mend;\n",
+      "%macro bare;\n",
+      "    data o2; run;\n",
+      "%mend;\n"
+    ),
+    function(f) {
+      defs <- parse_macro_definitions(f)
+      by_name <- setNames(defs, vapply(defs, function(d) {
+        d$name
+      }, character(1)))
+      expect_equal(by_name[["withp"]]$params, c("a", "b"))
+      expect_equal(by_name[["bare"]]$params, character(0))
+    }
+  )
+})
+
+# --- expand_macro: direct public-API branches ---
+
+test_that("expand_macro returns empty result on unknown macro name", {
+  result <- expand_macro("missing", args = character(0), macro_definitions = list())
+  expect_equal(result$lines, character(0))
+  expect_equal(result$source_lines, integer(0))
+})
+
+test_that("expand_macro derives source lines from def$line when none given", {
+  defs <- list(
+    m = list(
+      params = "ds",
+      body = c("data out&ds; run;", "data two&ds; run;"),
+      line = 10L
+    )
+  )
+  result <- expand_macro("m", args = "X", macro_definitions = defs)
+  expect_equal(result$source_lines, c(11L, 12L))
+  expect_true(grepl("outX", result$lines[1]))
+})
+
+test_that("expand_macro positional binding skips a name-bound param", {
+  # 'a' is bound by name; the positional value must skip 'a' and land on 'b'.
+  defs <- list(
+    m = list(
+      params = c("a", "b"),
+      body = "data &a._&b.; run;",
+      body_source_lines = 5L,
+      line = 1L
+    )
+  )
+  result <- expand_macro("m", args = c("a=first", "second"), macro_definitions = defs)
+  expect_true(grepl("data first_second", result$lines[1]))
+})
+
+test_that("expand_macro accepts a macro_def passed directly", {
+  def <- list(
+    params = "v",
+    body = "data &v.; run;",
+    body_source_lines = 9L,
+    line = 1L
+  )
+  result <- expand_macro("ignored", args = "tab", macro_definitions = list(), macro_def = def)
+  expect_true(grepl("data tab", result$lines[1]))
+})
+
+# --- unroll_do_loops: the loop machinery ---
+
+test_that("unroll_do_loops passes through lines with no %do loop", {
+  result <- unroll_do_loops(c("data a; run;", "data b; run;"), source_lines = c(1L, 2L))
+  expect_equal(result$lines, c("data a; run;", "data b; run;"))
+  expect_equal(result$source_lines, c(1L, 2L))
+})
+
+test_that("unroll_do_loops expands a simple integer loop", {
+  lines <- c(
+    "%do i = 1 %to 3;",
+    "    data t&i.; run;",
+    "%end;"
+  )
+  result <- unroll_do_loops(lines, source_lines = c(1L, 2L, 3L))
+  body <- paste0(result$lines, collapse = "\n")
+  expect_true(grepl("data t1;", body))
+  expect_true(grepl("data t2;", body))
+  expect_true(grepl("data t3;", body))
+  expect_equal(length(result$lines), 3L)
+  expect_equal(result$source_lines, c(2L, 2L, 2L))
+})
+
+test_that("unroll_do_loops unrolls a nested loop", {
+  lines <- c(
+    "%do i = 1 %to 2;",
+    "  %do j = 1 %to 2;",
+    "    data t&i._&j.; run;",
+    "  %end;",
+    "%end;"
+  )
+  result <- unroll_do_loops(lines, source_lines = c(1L, 2L, 3L, 4L, 5L))
+  body <- paste0(result$lines, collapse = "\n")
+  expect_true(grepl("data t1_1;", body))
+  expect_true(grepl("data t1_2;", body))
+  expect_true(grepl("data t2_1;", body))
+  expect_true(grepl("data t2_2;", body))
+  expect_equal(length(result$lines), 4L)
+})
+
+test_that("unroll_do_loops leaves an unterminated loop untouched", {
+  lines <- c(
+    "%do i = 1 %to 3;",
+    "    data t&i.; run;"
+  )
+  result <- unroll_do_loops(lines, source_lines = c(1L, 2L))
+  expect_equal(result$lines, lines)
+  expect_equal(result$source_lines, c(1L, 2L))
+})
+
+test_that("unroll_do_loops leaves a loop exceeding max_iterations untouched", {
+  lines <- c(
+    "%do i = 1 %to 10;",
+    "    data t&i.; run;",
+    "%end;"
+  )
+  result <- unroll_do_loops(lines, source_lines = c(1L, 2L, 3L), max_iterations = 3L)
+  expect_equal(result$lines, lines)
+  expect_equal(result$source_lines, c(1L, 2L, 3L))
+})
+
+test_that("expand_macro unrolls a %do loop in the macro body end to end", {
+  defs <- list(
+    mk = list(
+      params = character(0),
+      body = c(
+        "%do n = 1 %to 2;",
+        "    data out&n.; set src&n.; run;",
+        "%end;"
+      ),
+      body_source_lines = c(2L, 3L, 4L),
+      line = 1L
+    )
+  )
+  result <- expand_macro("mk", args = character(0), macro_definitions = defs)
+  body <- paste0(result$lines, collapse = "\n")
+  expect_true(grepl("data out1;", body))
+  expect_true(grepl("data out2;", body))
+})

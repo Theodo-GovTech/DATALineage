@@ -112,6 +112,27 @@ test_that("include fileref ignores filename defined after include", {
   )
 })
 
+test_that("path_to_dataset_name keeps last dotted part when stem has a dot", {
+  expect_equal(path_to_dataset_name("lib.tbl.txt"), "tbl")
+})
+
+test_that("path_to_dataset_name returns NULL when stem reduces to empty", {
+  expect_null(path_to_dataset_name("&mac."))
+})
+
+test_that("path_to_dataset_name returns NULL on empty or NULL input", {
+  expect_null(path_to_dataset_name(""))
+  expect_null(path_to_dataset_name(NULL))
+})
+
+test_that("normalize_fileref returns NULL on NULL input", {
+  expect_null(normalize_fileref(NULL))
+})
+
+test_that("normalize_fileref lower-cases and strips macro references", {
+  expect_equal(normalize_fileref("MyRef&suffix."), "myref")
+})
+
 test_that("include resolves cross-procedure macro path via suffix search", {
   dir <- tempfile("sas_test_")
   dir.create(dir, recursive = TRUE)

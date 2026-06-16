@@ -30,6 +30,18 @@ test_that("multiline comment with trailing code", {
   expect_true(grepl("data out;", result$replacement, ignore.case = TRUE))
 })
 
+test_that("unterminated multiline comment consumes the rest of the file", {
+  lines <- c(
+    "/* start of an unterminated comment",
+    "still inside the comment",
+    "no end marker here"
+  )
+  result <- handle_block_comments(lines, 1L)
+  expect_true(result$should_continue)
+  expect_equal(result$new_i, length(lines) + 1L)
+  expect_null(result$replacement)
+})
+
 test_that("parse_sas_file ignores commented data step", {
   with_temp_sas_dir(
     list("test.sas" = paste0(

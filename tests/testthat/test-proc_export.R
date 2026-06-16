@@ -67,3 +67,21 @@ test_that("no proc export returns NULL", {
   result <- .parse_export("data x; run;\n")
   expect_null(result)
 })
+
+test_that("proc export without run; falls back to last line as end_idx", {
+  source <- paste0(
+    "proc export data=src\n",
+    'outfile="/tmp/noend.csv" dbms=csv replace;\n',
+    "delimiter=';';"
+  )
+  f <- tempfile(fileext = ".sas")
+  on.exit(unlink(f), add = TRUE)
+  writeLines(source, f, useBytes = TRUE)
+  lines <- readLines(f, warn = FALSE)
+  result <- parse_proc_export(lines, 1L, f)
+
+  expect_false(is.null(result))
+  expect_equal(result$operation$dataset, "noend")
+  expect_equal(result$operation$input_datasets, "src")
+  expect_equal(result$end_idx, length(lines))
+})
