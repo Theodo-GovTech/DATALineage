@@ -580,13 +580,13 @@ OperationsGraphGenerator <- R6::R6Class("OperationsGraphGenerator",
         # Sub-pass a: load FILENAME refs
         for (sas_file in worklist) {
           result <- parse_filename_statements(sas_file)
-          for (nm in names(result$refs)) {
-            global_filename_refs[[nm]] <- result$refs[[nm]]
+          for (nm in names(result$filename_refs)) {
+            global_filename_refs[[nm]] <- result$filename_refs[[nm]]
           }
           key <- normalizePath(sas_file, mustWork = FALSE)
           file_fileref_definitions[[key]] <- c(
             file_fileref_definitions[[key]] %||% list(),
-            result$defs
+            result$file_fileref_definitions
           )
         }
 

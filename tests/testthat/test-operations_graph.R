@@ -2563,6 +2563,25 @@ test_that("discover_sas_files: resolves a non-.sas %include and a filename ref",
   expect_identical(gen$.__enclos_env__$private$discover_sas_files(), files)
 })
 
+test_that("discover_sas_files: resolves an %include through a FILENAME fileref", {
+  dir <- tempfile("og_fileref_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  # .inc target is invisible to the initial .sas listing, so it can only be
+  # discovered by resolving "%include incref;" against the FILENAME definition.
+  included <- file.path(dir, "included.inc")
+  writeLines("data output; set raw; run;", included)
+  writeLines(c(
+    sprintf('filename incref "%s";', included),
+    "%include incref;"
+  ), file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  files <- gen$.__enclos_env__$private$discover_sas_files()
+
+  expect_true(any(basename(files) == "included.inc"))
+})
+
 test_that("evaluate_static_macro_funcs: %substr with macro-var argument is left intact", {
   dir <- tempfile("og_substr_")
   dir.create(dir, recursive = TRUE)
