@@ -580,13 +580,13 @@ OperationsGraphGenerator <- R6::R6Class("OperationsGraphGenerator",
         # Sub-pass a: load FILENAME refs
         for (sas_file in worklist) {
           result <- parse_filename_statements(sas_file)
-          for (nm in names(result$refs)) {
-            global_filename_refs[[nm]] <- result$refs[[nm]]
+          for (nm in names(result$filename_refs)) {
+            global_filename_refs[[nm]] <- result$filename_refs[[nm]]
           }
           key <- normalizePath(sas_file, mustWork = FALSE)
           file_fileref_definitions[[key]] <- c(
             file_fileref_definitions[[key]] %||% list(),
-            result$defs
+            result$file_fileref_definitions
           )
         }
 
@@ -1159,8 +1159,8 @@ OperationsGraphGenerator <- R6::R6Class("OperationsGraphGenerator",
     display_file = function(op_node) {
       rel <- tryCatch({
         # Make path relative to sas_dir
-        sas_dir_norm <- normalizePath(self$sas_dir, mustWork = FALSE)
-        fp_norm <- normalizePath(op_node$file_path, mustWork = FALSE)
+        sas_dir_norm <- normalizePath(self$sas_dir, winslash = "/", mustWork = FALSE)
+        fp_norm <- normalizePath(op_node$file_path, winslash = "/", mustWork = FALSE)
         if (startsWith(fp_norm, paste0(sas_dir_norm, "/"))) {
           substring(fp_norm, nchar(sas_dir_norm) + 2L)
         } else {

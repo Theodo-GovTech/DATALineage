@@ -141,3 +141,60 @@ test_that("data step SET with %if/%then/%do inside dataset list - 7 dataset vari
     expect_true("justif_tx_lib" %in% inputs)
   })
 })
+
+# ---------------------------------------------------------------------------
+# Added coverage tests
+# ---------------------------------------------------------------------------
+
+test_that("extract_data_statement joins a DATA statement spanning several lines", {
+  lines <- c("data out", "  more_outputs;", "set inp;", "run;")
+  stmt <- extract_data_statement(lines, 1L)
+  expect_equal(stmt, "data out   more_outputs;")
+})
+
+test_that("parse_data_output_datasets returns NULL when no DATA statement matches", {
+  expect_null(parse_data_output_datasets("set foo;"))
+})
+
+test_that("parse_data_output_datasets returns NULL on empty output list", {
+  expect_null(parse_data_output_datasets("data ;"))
+})
+
+test_that("parse_data_output_datasets returns NULL when no dataset names parse out", {
+  expect_null(parse_data_output_datasets("data (drop=x);"))
+})
+
+test_that("parse_data_step returns NULL when there is no output dataset", {
+  expect_null(parse_data_step(c("set inp; run;"), 1L, "x.sas"))
+})
+
+test_that("data step scans PUT format references into fmt: inputs", {
+  lines <- c("data out;", "set inp;", "lab = put(code, mylab.);", "run;")
+  result <- parse_data_step(lines, 1L, "x.sas")
+  expect_true("fmt:mylab" %in% result$operations[[1]]$input_datasets)
+})
+
+test_that("data step flushes a pending SET buffer at the run; boundary", {
+  # The unbalanced paren keeps the SET statement open (its semicolon is never
+  # seen as the statement terminator), so the buffer is still pending when the
+  # run; line is reached and must be flushed there.
+  lines <- c("data out;", "set foo (where=(x=1", "run;")
+  result <- parse_data_step(lines, 1L, "x.sas")
+  expect_true("foo" %in% result$operations[[1]]$input_datasets)
+})
+
+test_that("data step flushes a pending SET buffer at the next PROC block boundary", {
+  lines <- c("data out;", "set foo (where=(x=1", "proc print;", "run;")
+  result <- parse_data_step(lines, 1L, "x.sas")
+  inputs <- result$operations[[1]]$input_datasets
+  expect_true("foo" %in% inputs)
+  expect_false("proc" %in% tolower(inputs))
+})
+
+test_that("data step flushes a pending SET buffer when the file ends with no run;", {
+  lines <- c("data out;", "set foo", "bar")
+  result <- parse_data_step(lines, 1L, "x.sas")
+  inputs <- result$operations[[1]]$input_datasets
+  expect_true("foo" %in% inputs)
+  expect_true("bar" %in% inputs)
+})

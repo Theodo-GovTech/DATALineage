@@ -138,3 +138,147 @@ test_that("fix_operation_line_number adjusts both line_number and end_line", {
   expect_equal(fixed$end_line, 55L)
   expect_true(fixed$end_line >= fixed$line_number)
 })
+
+# --- is_input_lib ---
+
+test_that("is_input_lib recognises a name from the source-lib allowlist", {
+  expect_true(is_input_lib("all"))
+  expect_true(is_input_lib("nom_pmsi"))
+})
+
+test_that("is_input_lib is case-insensitive", {
+  expect_true(is_input_lib("DATAIN"))
+})
+
+test_that("is_input_lib matches the period-suffixed source-lib pattern", {
+  expect_true(is_input_lib("mco23bd"))
+  expect_true(is_input_lib("had07bd"))
+})
+
+test_that("is_input_lib rejects an ordinary work library", {
+  expect_false(is_input_lib("work"))
+  expect_false(is_input_lib("mco23"))
+})
+
+# --- append_to / env_get (defaultdict(list) replacement) ---
+
+test_that("append_to creates a one-element list for a fresh key", {
+  e <- new.env()
+  append_to(e, key = "k", value = "first")
+  expect_equal(get("k", envir = e), list("first"))
+})
+
+test_that("append_to appends to an existing key preserving order", {
+  e <- new.env()
+  append_to(e, key = "k", value = "first")
+  append_to(e, key = "k", value = "second")
+  expect_equal(get("k", envir = e), list("first", "second"))
+})
+
+test_that("env_get returns the stored value when the key exists", {
+  e <- new.env()
+  assign("k", list("v"), envir = e)
+  expect_equal(DATALineage:::env_get(e, key = "k"), list("v"))
+})
+
+test_that("env_get returns the default when the key is absent", {
+  e <- new.env()
+  expect_equal(DATALineage:::env_get(e, key = "missing"), list())
+  expect_null(DATALineage:::env_get(e, key = "missing", default = NULL))
+})
+
+# --- clean_dataset_name: macro-dot branch (line 124) ---
+
+test_that("clean_dataset_name keeps a macro-variable dot reference intact", {
+  expect_equal(clean_dataset_name("&lib.dataset"), "&lib.dataset")
+})
+
+test_that("clean_dataset_name strips disallowed chars around a macro ref", {
+  expect_equal(clean_dataset_name("&lib.data-set!"), "&lib.dataset")
+})
+
+# --- parse_dataset_names_with_parens: trailing-whitespace break (line 178) ---
+
+test_that("parse_dataset_names_with_parens handles trailing whitespace", {
+  expect_equal(
+    parse_dataset_names_with_parens("foo bar   "),
+    c("foo", "bar")
+  )
+})
+
+test_that("parse_dataset_names_with_parens skips an excluded keyword", {
+  expect_equal(
+    parse_dataset_names_with_parens("foo end bar", exclude_keywords = "end"),
+    c("foo", "bar")
+  )
+})
+
+# --- strip_sas_block_comments ---
+
+test_that("strip_sas_block_comments removes a single block comment", {
+  expect_equal(
+    strip_sas_block_comments("data a; /* note */ set b;"),
+    "data a;   set b;"
+  )
+})
+
+test_that("strip_sas_block_comments leaves comment-free text unchanged", {
+  expect_equal(strip_sas_block_comments("data a; set b;"), "data a; set b;")
+})
+
+test_that("strip_sas_block_comments handles an unterminated comment", {
+  out <- strip_sas_block_comments("data a; /* unterminated")
+  expect_true(startsWith(out, "data a; "))
+  expect_false(grepl("unterminated", out))
+})
+
+# --- find_statement_end_semicolon ---
+
+test_that("find_statement_end_semicolon finds a top-level semicolon", {
+  expect_equal(find_statement_end_semicolon("data a; set b;"), 7L)
+})
+
+test_that("find_statement_end_semicolon ignores a semicolon inside parens", {
+  expect_equal(
+    find_statement_end_semicolon("set a(where=(x=1; y=2)); run"),
+    nchar("set a(where=(x=1; y=2));")
+  )
+})
+
+test_that("find_statement_end_semicolon ignores a semicolon in double quotes", {
+  expect_equal(
+    find_statement_end_semicolon('put "a;b"; rest'),
+    nchar('put "a;b";')
+  )
+})
+
+test_that("find_statement_end_semicolon ignores a semicolon in single quotes", {
+  expect_equal(
+    find_statement_end_semicolon("put 'a;b'; rest"),
+    nchar("put 'a;b';")
+  )
+})
+
+test_that("find_statement_end_semicolon returns -1 when none present", {
+  expect_equal(find_statement_end_semicolon("data a set b"), -1L)
+})
+
+# --- scan_macro_var_refs: builtin / dedup skip (line 335) ---
+
+test_that("scan_macro_var_refs returns ordered de-duplicated names", {
+  expect_equal(
+    scan_macro_var_refs(c("data &year.; set &lib..&year.;")),
+    c("year", "lib")
+  )
+})
+
+test_that("scan_macro_var_refs drops SAS built-in automatic vars", {
+  expect_equal(
+    scan_macro_var_refs(c("%if &syserr. then; data &real.; run;")),
+    "real"
+  )
+})
+
+test_that("scan_macro_var_refs returns empty when no refs present", {
+  expect_equal(scan_macro_var_refs(c("data a; run;")), character(0))
+})

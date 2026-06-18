@@ -310,6 +310,32 @@ test_that("run_lineage_and_graph: per-output dirs follow expected structure", {
   ))
 })
 
+test_that("run_lineage_and_graph: resolves project_root from package when NULL", {
+  resolved_root <- NULL
+
+  local_mocked_bindings(
+    run_multiple = function(sas_dir, outputs, output_dirs) {
+      resolved_root <<- sub(
+        file.path("", "procedures", "migration-my-proc", "sas") , "",
+        sas_dir, fixed = TRUE
+      )
+      1L
+    },
+    run_operations_graph = function(...) 0L
+  )
+
+  rc <- run_lineage_and_graph(
+    procedure = "my-proc",
+    path_to_sas_entrypoint = "main.sas",
+    group = "grp",
+    outputs = c("out1"),
+    project_root = NULL
+  )
+
+  expect_equal(rc, 1L)
+  expect_true(nzchar(resolved_root))
+})
+
 test_that("run_lineage_and_graph: sas_dir and project_root are forwarded correctly", {
   tmp <- tempfile("lag_test_")
   dir.create(tmp, recursive = TRUE)

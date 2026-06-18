@@ -94,3 +94,72 @@ test_that("bare ods csv destination recognised same as tagsets.csv", {
   expect_equal(result$operation$input_datasets, "tab101_liste_sej")
   expect_equal(result$operation$operation_type, "ODS CSV")
 })
+
+# ---------------------------------------------------------------------------
+# Added coverage tests
+# ---------------------------------------------------------------------------
+
+test_that("ods block with open and close on a single line is parsed", {
+  result <- .parse_ods(
+    "ods csv file=t1 options(); proc print data=src; run; ods csv close;\n"
+  )
+  expect_false(is.null(result))
+  expect_equal(result$operation$dataset, "t1")
+  expect_equal(result$operation$input_datasets, "src")
+  expect_equal(result$end_idx, 1L)
+})
+
+test_that("ods block with no matching close returns NULL", {
+  result <- .parse_ods(
+    paste0(
+      "ods csv file=t2 options();\n",
+      "proc print data=src; run;\n"
+    )
+  )
+  expect_null(result)
+})
+
+test_that("parse_ods_tagsets_csv returns NULL on a non-ODS line", {
+  expect_null(parse_ods_tagsets_csv(c("data x; run;"), 1L, "x.sas"))
+})
+
+test_that("ods block scans data refs inside a called macro body", {
+  lines <- c(
+    "ods csv file=t1 options();",
+    "%mymacro();",
+    "%if cond %then;",
+    "ods csv close;"
+  )
+  macro_defs <- list(
+    mymacro = list(body = c("proc print data=hidden_input; run;"))
+  )
+  result <- parse_ods_tagsets_csv(lines, 1L, "x.sas", macro_defs)
+  expect_false(is.null(result))
+  expect_true("hidden_input" %in% result$operation$input_datasets)
+})
+
+test_that("ods block ignores macro calls with no matching definition", {
+  lines <- c(
+    "ods csv file=t1 options();",
+    "%unknownmacro();",
+    "ods csv close;"
+  )
+  macro_defs <- list(other = list(body = "proc print data=x; run;"))
+  result <- parse_ods_tagsets_csv(lines, 1L, "x.sas", macro_defs)
+  expect_false(is.null(result))
+  expect_equal(result$operation$input_datasets, character(0))
+})
+
+test_that("ods block skips macro control-flow keyword calls", {
+  # %do; matches the macro-call regex but is in the skip list, so it must not
+  # be looked up among the macro definitions.
+  lines <- c(
+    "ods csv file=t1 options();",
+    "%do;",
+    "ods csv close;"
+  )
+  macro_defs <- list(other = list(body = ""))
+  result <- parse_ods_tagsets_csv(lines, 1L, "x.sas", macro_defs)
+  expect_false(is.null(result))
+  expect_equal(result$operation$input_datasets, character(0))
+})

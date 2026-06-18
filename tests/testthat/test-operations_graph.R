@@ -1413,41 +1413,34 @@ test_that("find_best_macro: no definitions returns NULL", {
 test_that("find_best_macro: same-file priority", {
   with_temp_sas_dir(list("test.sas" = "/* test */"), function(dir) {
     gen <- make_test_generator(dir)
-    macro_same <- new_og_macro_definition("m", "/path/test.sas", 1, 3, character(0))
-    macro_other <- new_og_macro_definition("m", "/path/other.sas", 1, 3, character(0))
-    # Need files to exist for macro_has_body
-    dir.create("/tmp/og_test_best_macro", showWarnings = FALSE)
-    on.exit(unlink("/tmp/og_test_best_macro", recursive = TRUE), add = TRUE)
-    writeLines(c("%macro m;", "  data x; run;", "%mend;"),
-               "/tmp/og_test_best_macro/test.sas")
-    writeLines(c("%macro m;", "  data y; run;", "%mend;"),
-               "/tmp/og_test_best_macro/other.sas")
-    macro_same$file_path <- "/tmp/og_test_best_macro/test.sas"
-    macro_other$file_path <- "/tmp/og_test_best_macro/other.sas"
+    same_path <- file.path(dir, "macro_same.sas")
+    other_path <- file.path(dir, "macro_other.sas")
+    writeLines(c("%macro m;", "  data x; run;", "%mend;"), same_path)
+    writeLines(c("%macro m;", "  data y; run;", "%mend;"), other_path)
+    macro_same <- new_og_macro_definition("m", same_path, 1, 3, character(0))
+    macro_other <- new_og_macro_definition("m", other_path, 1, 3, character(0))
+    macro_same$file_path <- same_path
+    macro_other$file_path <- other_path
     gen$macro_definitions[["m"]] <- list(macro_other, macro_same)
-    result <- gen$.__enclos_env__$private$find_best_macro(
-      "m", "/tmp/og_test_best_macro/test.sas", 10
-    )
-    expect_equal(result$file_path, "/tmp/og_test_best_macro/test.sas")
+    result <- gen$.__enclos_env__$private$find_best_macro("m", same_path, 10)
+    expect_equal(result$file_path, same_path)
   })
 })
 
 test_that("find_best_macro: fallback to first definition", {
   with_temp_sas_dir(list("test.sas" = "/* test */"), function(dir) {
     gen <- make_test_generator(dir)
-    dir.create("/tmp/og_test_fallback", showWarnings = FALSE)
-    on.exit(unlink("/tmp/og_test_fallback", recursive = TRUE), add = TRUE)
-    writeLines(c("%macro m;", "  data x; run;", "%mend;"),
-               "/tmp/og_test_fallback/other1.sas")
-    writeLines(c("%macro m;", "  data y; run;", "%mend;"),
-               "/tmp/og_test_fallback/other2.sas")
-    macro1 <- new_og_macro_definition("m", "/tmp/og_test_fallback/other1.sas", 1, 3)
-    macro2 <- new_og_macro_definition("m", "/tmp/og_test_fallback/other2.sas", 1, 3)
+    other1 <- file.path(dir, "other1.sas")
+    other2 <- file.path(dir, "other2.sas")
+    writeLines(c("%macro m;", "  data x; run;", "%mend;"), other1)
+    writeLines(c("%macro m;", "  data y; run;", "%mend;"), other2)
+    macro1 <- new_og_macro_definition("m", other1, 1, 3)
+    macro2 <- new_og_macro_definition("m", other2, 1, 3)
     gen$macro_definitions[["m"]] <- list(macro1, macro2)
     result <- gen$.__enclos_env__$private$find_best_macro(
-      "m", "/path/test.sas", 10
+      "m", file.path(dir, "absent.sas"), 10
     )
-    expect_equal(result$file_path, "/tmp/og_test_fallback/other1.sas")
+    expect_equal(result$file_path, other1)
   })
 })
 
@@ -2143,4 +2136,517 @@ test_that("run_operations_graph: missing target in walk returns 1", {
   })
   expect_equal(rc, 1L)
   expect_true(any(grepl("Error", output)))
+})
+
+# ===========================================================================
+# TestGenerateSweep - rich graph drives the generate_* / iter_* / bucket /
+# build_code_extracts / extract_code / display_file / unique_infile_mappings
+# branches that single-node tests do not reach.
+# ===========================================================================
+.make_rich_generator <- function(dir) {
+  # main.sas holds three operations on distinct lines so extract_code reads
+  # real bytes and display_file resolves under sas_dir.
+  writeLines(c(
+    "data raw; infile in1; input x; run;",
+    "data mid; set raw; run;",
+    "data output; set mid; run;"
+  ), file.path(dir, "main.sas"))
+  gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+  gen$target_datasets <- "output"
+
+  infile_node <- new_operation_node(
+    dataset = "infile:raw", file_path = file.path(dir, "main.sas"),
+    line_number = 1, operation_type = "INFILE",
+    input_datasets = character(0), depth = 0,
+    resolved_path = "&datan/input.dat", end_line = 1, feeds = "output"
+  )
+  mid_node <- new_operation_node(
+    dataset = "mid", file_path = file.path(dir, "main.sas"),
+    line_number = 2, operation_type = "DATA STEP",
+    input_datasets = "raw", depth = 0, end_line = 2, feeds = "output"
+  )
+  out_node <- new_operation_node(
+    dataset = "output", file_path = file.path(dir, "main.sas"),
+    line_number = 3, operation_type = "DATA",
+    input_datasets = "mid", depth = 0, end_line = 3, feeds = "output"
+  )
+  gen$graph_nodes <- list(infile_node, mid_node, out_node)
+  gen$graph_edges <- list(list(infile_node, mid_node), list(mid_node, out_node))
+  gen
+}
+
+test_that("generate_dot: multi-line node renders start-end range and edges", {
+  with_temp_sas_dir(list("placeholder.sas" = "/* p */"), function(dir) {
+    gen <- .make_rich_generator(dir)
+    dot <- gen$generate_dot()
+    expect_true(grepl("main.sas:1-1", dot, fixed = TRUE))
+    expect_true(grepl("->", dot, fixed = TRUE))
+  })
+})
+
+test_that("generate_txt: multi-line node emits end_line and resolved_path", {
+  with_temp_sas_dir(list("placeholder.sas" = "/* p */"), function(dir) {
+    gen <- .make_rich_generator(dir)
+    txt <- gen$generate_txt()
+    expect_true(grepl("end_line=2", txt, fixed = TRUE))
+    expect_true(grepl("resolved_path=&datan/input.dat", txt, fixed = TRUE))
+    expect_true(grepl("E ", txt, fixed = TRUE))
+  })
+})
+
+test_that("generate_graph_md: renders the input-file mapping table", {
+  with_temp_sas_dir(list("placeholder.sas" = "/* p */"), function(dir) {
+    gen <- .make_rich_generator(dir)
+    md <- gen$generate_graph_md()
+    expect_true(grepl("| Dataset | Input File |", md, fixed = TRUE))
+    # INFILE dataset prefix stripped, macro-var rewritten to <datan>.
+    expect_true(grepl("| raw | <datan>/input.dat |", md, fixed = TRUE))
+  })
+})
+
+test_that("generate_spec_index_md: renders bucket table with code ranges", {
+  with_temp_sas_dir(list("placeholder.sas" = "/* p */"), function(dir) {
+    gen <- .make_rich_generator(dir)
+    md <- gen$generate_spec_index_md()
+    expect_true(grepl("## feeds: output", md, fixed = TRUE))
+    expect_true(grepl("code_extract_lines", md, fixed = TRUE))
+  })
+})
+
+test_that("generate_spec_index_json: payload counts nodes and lists buckets", {
+  with_temp_sas_dir(list("placeholder.sas" = "/* p */"), function(dir) {
+    gen <- .make_rich_generator(dir)
+    payload <- jsonlite::fromJSON(gen$generate_spec_index_json(),
+                                  simplifyVector = FALSE)
+    expect_equal(payload$total_nodes, 3L)
+    expect_true(length(payload$buckets) >= 1L)
+  })
+})
+
+test_that("generate_code_extracts_md: extracts real source lines per node", {
+  with_temp_sas_dir(list("placeholder.sas" = "/* p */"), function(dir) {
+    gen <- .make_rich_generator(dir)
+    extracts <- gen$generate_code_extracts_md()
+    expect_true(grepl("data mid; set raw; run;", extracts, fixed = TRUE))
+    expect_true(grepl("resolved path", extracts, fixed = TRUE))
+  })
+})
+
+test_that("render_infile_mapping_table: no INFILE nodes yields placeholder", {
+  with_temp_sas_dir(list("main.sas" = "data output; run;"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    node <- new_operation_node(
+      dataset = "output", file_path = file.path(dir, "main.sas"),
+      line_number = 1, operation_type = "DATA",
+      input_datasets = character(0), depth = 0
+    )
+    gen$graph_nodes <- list(node)
+    md <- gen$generate_graph_md()
+    expect_true(grepl("No external input files detected", md, fixed = TRUE))
+  })
+})
+
+test_that("display_file: path outside sas_dir is returned verbatim", {
+  with_temp_sas_dir(list("main.sas" = "data output; run;"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    outside <- tempfile(fileext = ".sas")
+    writeLines("data output; run;", outside)
+    on.exit(unlink(outside), add = TRUE)
+    node <- new_operation_node(
+      dataset = "output", file_path = outside, line_number = 1,
+      operation_type = "DATA", input_datasets = character(0), depth = 0
+    )
+    gen$graph_nodes <- list(node)
+    txt <- gen$generate_txt()
+    expect_true(grepl(outside, txt, fixed = TRUE))
+  })
+})
+
+# ===========================================================================
+# TestDiscoverAndResolve - include traversal, static %let resolution, %substr
+# evaluation, filename path resolution.
+# ===========================================================================
+test_that("discover_sas_files: resolves %include and static %let references", {
+  dir <- tempfile("og_disc_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  writeLines(c(
+    "%let root = /data;",
+    "%let sub = &root./files;",
+    "%let short = %substr(abcdef, 2, 3);",
+    '%include "child.sas";'
+  ), file.path(dir, "main.sas"))
+  writeLines("data output; set raw; run;", file.path(dir, "child.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  files <- gen$.__enclos_env__$private$discover_sas_files()
+
+  expect_equal(length(files), 2L)
+  expect_equal(gen$macro_variables$sub, "/data/files")
+  expect_equal(gen$macro_variables$short, "bcd")
+})
+
+test_that("collect_static_let_values: %substr without length and duplicate %let", {
+  dir <- tempfile("og_let_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  writeLines(c(
+    "%let a = hello;",
+    "%let a = ignored;",
+    "%let tail = %substr(&a, 3);"
+  ), file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  gen$.__enclos_env__$private$discover_sas_files()
+
+  # First %let wins, duplicate ignored.
+  expect_equal(gen$macro_variables$a, "hello")
+  # %substr(&a, 3) with no length keeps from index 3 to end.
+  expect_equal(gen$macro_variables$tail, "llo")
+})
+
+test_that("resolve_filename_path: returns normalized path for an existing file", {
+  dir <- tempfile("og_resolve_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  writeLines("data output; run;", file.path(dir, "child.sas"))
+  writeLines("/* p */", file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  resolved <- gen$.__enclos_env__$private$resolve_filename_path(
+    file.path(dir, "child.sas")
+  )
+  expect_equal(resolved, normalizePath(file.path(dir, "child.sas"), mustWork = FALSE))
+})
+
+test_that("read_file: missing file is cached as empty via warning handler", {
+  with_temp_sas_dir(list("main.sas" = "/* p */"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    missing <- file.path(dir, "absent.sas")
+    lines <- gen$.__enclos_env__$private$read_file(missing)
+    expect_length(lines, 0L)
+    # Cached empty result is returned on the second call.
+    expect_length(gen$.__enclos_env__$private$read_file(missing), 0L)
+  })
+})
+
+# ===========================================================================
+# TestMacroDefHelpers - nested detection, empty body, fallback selection.
+# ===========================================================================
+test_that("is_nested_macro: inner macro inside outer is detected as nested", {
+  dir <- tempfile("og_nest_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  writeLines(c(
+    "%macro outer;",
+    "  %macro inner;",
+    "    data t; run;",
+    "  %mend;",
+    "%mend;"
+  ), file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  gen$build_macro_map()
+  inner <- gen$macro_definitions[["inner"]][[1]]
+  outer <- gen$macro_definitions[["outer"]][[1]]
+  same_file <- list(outer, inner)
+
+  expect_true(gen$.__enclos_env__$private$is_nested_macro(inner, same_file))
+  expect_false(gen$.__enclos_env__$private$is_nested_macro(outer, same_file))
+})
+
+test_that("macro_has_body: empty file and degenerate range return FALSE", {
+  with_temp_sas_dir(list("main.sas" = "/* p */"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    empty_file_def <- new_og_macro_definition(
+      name = "x", file_path = file.path(dir, "nope.sas"),
+      start_line = 1, end_line = 3
+    )
+    expect_false(gen$.__enclos_env__$private$macro_has_body(empty_file_def))
+
+    degenerate_def <- new_og_macro_definition(
+      name = "y", file_path = file.path(dir, "main.sas"),
+      start_line = 1, end_line = 2
+    )
+    expect_false(gen$.__enclos_env__$private$macro_has_body(degenerate_def))
+  })
+})
+
+test_that("find_best_macro: ultimate fallback returns first definition", {
+  dir <- tempfile("og_best_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  # An empty stub macro in another file: no body, not same-file -> falls
+  # through every branch to definitions[[1]].
+  other_file <- file.path(dir, "other.sas")
+  writeLines(c("%macro m; %mend;"), other_file)
+  writeLines("/* p */", file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  gen$build_macro_map()
+  result <- gen$.__enclos_env__$private$find_best_macro(
+    "m", file.path(dir, "main.sas"), 10
+  )
+  expect_false(is.null(result))
+  expect_equal(result$name, "m")
+})
+
+# ===========================================================================
+# TestWalkUncalledSkips - the skip branches in walk_uncalled_top_level_macros.
+# ===========================================================================
+test_that("walk_uncalled_top_level_macros: two top-level macros in one file are skipped", {
+  dir <- tempfile("og_uncalled_two_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  # Two non-nested macros -> top_level_defs length != 1 -> file skipped.
+  writeLines(c(
+    "%macro one;",
+    "  data a; run;",
+    "%mend;",
+    "%macro two;",
+    "  data b; run;",
+    "%mend;"
+  ), file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  gen$build_macro_map()
+  gen$walk_code()
+  # Neither macro is walked: no nodes produced (no manifest ops anyway).
+  expect_length(gen$graph_nodes, 0L)
+})
+
+test_that("walk_uncalled_top_level_macros: empty-body top-level macro is skipped", {
+  dir <- tempfile("og_uncalled_empty_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  # Single top-level macro with a blank body -> macro_has_body FALSE -> skip.
+  writeLines(c(
+    "%macro empty;",
+    "   ",
+    "%mend;"
+  ), file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  gen$build_macro_map()
+  gen$walk_code()
+  expect_false("empty" %in% gen$entered_macros)
+})
+
+# ===========================================================================
+# TestIfChainEdges - degenerate matching, comment skipping, in-macro chains.
+# ===========================================================================
+test_that("find_matching_end: no matching %end returns -1 and chain detection bails", {
+  with_temp_sas_dir(list("main.sas" = "/* p */"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    lines <- c("%if &x %then %do;", "  data t; run;")
+    expect_equal(gen$.__enclos_env__$private$find_matching_end(lines, 1L), -1L)
+    expect_null(gen$.__enclos_env__$private$detect_if_chain(lines, 1L))
+  })
+})
+
+test_that("next_chain_line: skips blank and comment lines", {
+  with_temp_sas_dir(list("main.sas" = "/* p */"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    lines <- c("%end;", "", "/* c */", "%else %do;")
+    expect_equal(gen$.__enclos_env__$private$next_chain_line(lines, 2L), 4L)
+  })
+})
+
+test_that("walk_if_chain: if-chain inside a macro clamps branch stop to macro end", {
+  dir <- tempfile("og_macroif_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  # main calls %run; the macro body has an %if/%then/%do chain that produces
+  # the operation, so the chain is detected while in_macro is TRUE.
+  sas <- c(
+    "%macro run_it;",                 # 1
+    "  %if &flag %then %do;",         # 2
+    "    data output; set raw; run;", # 3
+    "  %end;",                        # 4
+    "%mend;",                         # 5
+    "%run_it;"                        # 6
+  )
+  writeLines(sas, file.path(dir, "main.sas"))
+  manifest <- list(
+    target_dataset = "output",
+    operations = list(list(
+      dataset = "output", operation_type = "DATA",
+      file = "main.sas", line_number = 3, end_line = 3,
+      input_datasets = list("raw")
+    ))
+  )
+  mp <- file.path(dir, "manifest.json")
+  writeLines(jsonlite::toJSON(manifest, auto_unbox = TRUE), mp)
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", mp)
+  gen$load_manifests()
+  gen$build_macro_map()
+  gen$walk_code()
+
+  datasets <- vapply(gen$graph_nodes, function(n) n$dataset, character(1))
+  expect_true("output" %in% datasets)
+})
+
+# ===========================================================================
+# TestUniqueInfileDedup - duplicate INFILE mapping collapses to one row.
+# ===========================================================================
+test_that("unique_infile_mappings: identical INFILE nodes collapse to one mapping", {
+  with_temp_sas_dir(list("main.sas" = "data output; run;"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    node <- new_operation_node(
+      dataset = "infile:raw", file_path = file.path(dir, "main.sas"),
+      line_number = 1, operation_type = "INFILE",
+      input_datasets = character(0), depth = 0,
+      resolved_path = "/data/in.dat"
+    )
+    dup <- node
+    dup$line_number <- 2L
+    gen$graph_nodes <- list(node, dup)
+    md <- gen$generate_graph_md()
+    rows <- grep("| raw | /data/in.dat |", strsplit(md, "\n", fixed = TRUE)[[1]],
+                 fixed = TRUE, value = TRUE)
+    expect_length(rows, 1L)
+  })
+})
+
+# ===========================================================================
+# TestBucketLayoutRanks - three outputs exercise the partial-share rank.
+# ===========================================================================
+test_that("bucket_layout: ranks all-share, partial-share, and single-output buckets", {
+  with_temp_sas_dir(list("main.sas" = "data output; run;"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    gen$target_datasets <- c("t1", "t2", "t3")
+
+    mk <- function(dataset, line, feeds) {
+      n <- new_operation_node(
+        dataset = dataset, file_path = file.path(dir, "main.sas"),
+        line_number = line, operation_type = "DATA",
+        input_datasets = character(0), depth = 0
+      )
+      n$feeds <- feeds
+      n
+    }
+    all_share <- mk("shared_all", 1, c("t1", "t2", "t3"))   # rank 0
+    partial   <- mk("shared_two", 2, c("t1", "t2"))         # rank 1 (n>1, n!=3)
+    single    <- mk("only_one", 3, c("t1"))                 # rank 2 (n==1)
+    gen$graph_nodes <- list(single, partial, all_share)
+
+    layout <- gen$.__enclos_env__$private$bucket_layout()
+    feeds_order <- lapply(layout, function(b) b$feeds)
+    expect_equal(feeds_order[[1]], c("t1", "t2", "t3"))
+    expect_equal(feeds_order[[2]], c("t1", "t2"))
+    expect_equal(feeds_order[[3]], "t1")
+  })
+})
+
+# ===========================================================================
+# TestDiscoverEdgeBranches - filename refs, non-.sas includes, error-path reads,
+# %substr with macro-var argument.
+# ===========================================================================
+test_that("discover_sas_files: resolves a non-.sas %include and a filename ref", {
+  dir <- tempfile("og_inc_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  writeLines(c(
+    'filename ref1 "some.dat";',
+    '%include "snippet.inc";'
+  ), file.path(dir, "main.sas"))
+  # .inc is not picked up by the initial .sas listing, so resolving the
+  # include adds a brand-new file to the worklist.
+  writeLines("data output; set raw; run;", file.path(dir, "snippet.inc"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  files <- gen$.__enclos_env__$private$discover_sas_files()
+  expect_true(any(basename(files) == "snippet.inc"))
+
+  # Second call returns the cached list verbatim.
+  expect_identical(gen$.__enclos_env__$private$discover_sas_files(), files)
+})
+
+test_that("discover_sas_files: resolves an %include through a FILENAME fileref", {
+  dir <- tempfile("og_fileref_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  # .inc target is invisible to the initial .sas listing, so it can only be
+  # discovered by resolving "%include incref;" against the FILENAME definition.
+  included <- file.path(dir, "included.inc")
+  writeLines("data output; set raw; run;", included)
+  writeLines(c(
+    sprintf('filename incref "%s";', included),
+    "%include incref;"
+  ), file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  files <- gen$.__enclos_env__$private$discover_sas_files()
+
+  expect_true(any(basename(files) == "included.inc"))
+})
+
+test_that("evaluate_static_macro_funcs: %substr with macro-var argument is left intact", {
+  dir <- tempfile("og_substr_")
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  writeLines(c(
+    "%let pick = %substr(&unresolved, 2, 3);"
+  ), file.path(dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(dir, "main.sas", character(0))
+  result <- gen$.__enclos_env__$private$evaluate_static_macro_funcs(
+    "%substr(&unresolved, 2, 3)"
+  )
+  # Unresolved &-reference inside the arg short-circuits the substitution.
+  expect_true(grepl("%substr", result, fixed = TRUE))
+})
+
+test_that("read_file: directory path triggers the error handler and caches empty", {
+  with_temp_sas_dir(list("main.sas" = "/* p */"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    # Reading a directory raises an error (not a warning) inside readLines.
+    lines <- gen$.__enclos_env__$private$read_file(dir)
+    expect_length(lines, 0L)
+  })
+})
+
+test_that("bucket_layout: single-output node lands in the lowest-priority bucket", {
+  with_temp_sas_dir(list("main.sas" = "data output; run;"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    gen$target_datasets <- c("t1", "t2")
+    n <- new_operation_node(
+      dataset = "lonely", file_path = file.path(dir, "main.sas"),
+      line_number = 1, operation_type = "DATA",
+      input_datasets = character(0), depth = 0
+    )
+    n$feeds <- "t1"
+    gen$graph_nodes <- list(n)
+    layout <- gen$.__enclos_env__$private$bucket_layout()
+    expect_equal(layout[[1]]$feeds, "t1")
+  })
+})
+
+test_that("walk_uncalled_top_level_macros: macro defined outside sas_dir is skipped", {
+  base <- tempfile("og_outside_")
+  dir.create(base, recursive = TRUE)
+  on.exit(unlink(base, recursive = TRUE), add = TRUE)
+  sas_dir <- file.path(base, "sas")
+  outside <- file.path(base, "external")
+  dir.create(sas_dir)
+  dir.create(outside)
+
+  ext_file <- file.path(outside, "ext.sas")
+  writeLines(c("%macro extmac;", "  data t; run;", "%mend;"), ext_file)
+  writeLines(sprintf('%%include "%s";', ext_file), file.path(sas_dir, "main.sas"))
+
+  gen <- OperationsGraphGenerator$new(sas_dir, "main.sas", character(0))
+  gen$build_macro_map()
+  gen$walk_code()
+  # The macro lives outside the analyzable tree, so it is never auto-walked.
+  expect_false("extmac" %in% gen$entered_macros)
+})
+
+test_that("bucket_layout: empty graph returns an empty list", {
+  with_temp_sas_dir(list("main.sas" = "data output; run;"), function(dir) {
+    gen <- make_test_generator(dir, target = "output", entrypoint = "main.sas")
+    gen$graph_nodes <- list()
+    expect_equal(gen$.__enclos_env__$private$bucket_layout(), list())
+  })
 })

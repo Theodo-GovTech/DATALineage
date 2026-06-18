@@ -161,3 +161,86 @@ test_that("inline proc sql select into on opener line (regression)", {
     }
   )
 })
+
+# ---------------------------------------------------------------------------
+# Added coverage tests
+# ---------------------------------------------------------------------------
+
+test_that("extract_sql_tables closes open FROM contexts at end of buffer (no semicolon)", {
+  expect_equal(extract_sql_tables("select * from mytab"), "mytab")
+})
+
+test_that("extract_sql_tables skips empty entries in a comma table list", {
+  # The empty slot between the two commas yields a NULL extracted token.
+  expect_equal(extract_sql_tables("select * from a, , b;"), c("a", "b"))
+})
+
+test_that("extract_sql_tables closes a FROM context with no table before a terminator", {
+  # FROM is immediately followed by WHERE at the same depth: no table token.
+  expect_equal(extract_sql_tables("select * from where x=1;"), character(0))
+})
+
+test_that("parse_proc_sql returns NULL when the line is not a CREATE TABLE", {
+  expect_null(parse_proc_sql(c("select * from x;"), 1L, "x.sas"))
+})
+
+test_that("collect_sql_statement_inputs scans PUT format references", {
+  result <- parse_proc_sql(c("create table t as select put(x, myfmt.) from src;"),
+    1L, "x.sas")
+  expect_true("fmt:myfmt" %in% result$input_datasets)
+  expect_true("src" %in% result$input_datasets)
+})
+
+test_that("collect_sql_statement_inputs stops after 50 unterminated lines", {
+  lines <- c("create table t as select * from src", rep("col,", 60L))
+  result <- parse_proc_sql(lines, 1L, "x.sas")
+  expect_equal(result$end_line, 52L)
+})
+
+test_that(".collect_select_into_targets stops after 50 unterminated lines", {
+  lines <- c(
+    "proc sql noprint;",
+    "select count(*) into :cnt from src",
+    rep("x", 60L)
+  )
+  result <- parse_proc_sql_block(lines, 1L, "x.sas")
+  expect_length(result$operations, 1L)
+  expect_equal(result$operations[[1]]$dataset, "mv:cnt")
+})
+
+test_that("parse_proc_sql_block emits a MACRO LET op for %let var = &sqlobs", {
+  lines <- c(
+    "proc sql;",
+    "create table t as select * from src;",
+    "%let n = &sqlobs;",
+    "quit;"
+  )
+  result <- parse_proc_sql_block(lines, 1L, "x.sas")
+  ops <- result$operations
+  expect_length(ops, 2L)
+  expect_equal(ops[[2]]$dataset, "mv:n")
+  expect_equal(ops[[2]]$operation_type, "MACRO LET")
+  expect_equal(ops[[2]]$input_datasets, "t")
+})
+
+test_that("parse_proc_sql_block ends at the next DATA/PROC block before quit", {
+  lines <- c(
+    "proc sql;",
+    "create table t as select * from src;",
+    "data later;",
+    "set t;",
+    "run;"
+  )
+  result <- parse_proc_sql_block(lines, 1L, "x.sas")
+  expect_length(result$operations, 1L)
+  expect_equal(result$end_line, 2L)
+})
+
+test_that("parse_proc_sql_block clamps end_line to file length when there is no quit", {
+  lines <- c(
+    "proc sql;",
+    "create table t as select * from src;"
+  )
+  result <- parse_proc_sql_block(lines, 1L, "x.sas")
+  expect_equal(result$end_line, 2L)
+})
